@@ -7,12 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		68ECEED32F2FD3150072E610 /* RTPmacos.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68BDFDC92F11E8D1002A2DA6 /* RTPmacos.xcframework */; };
+		68ECEF612F3134410072E610 /* rtp-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 68ECEF5E2F3132550072E610 /* rtp-macos.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		686B783E2F0E3150006DF34C /* rtp-ui.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "rtp-ui.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		68BDFDC92F11E8D1002A2DA6 /* RTPmacos.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = RTPmacos.xcframework; path = ../rtp/RTPmacos.xcframework; sourceTree = "<group>"; };
+		68ECEF582F31311F0072E610 /* rtp-macos.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "rtp-macos.a"; path = "rtp/libs/rtp-macos.a"; sourceTree = "<group>"; };
+		68ECEF5D2F3132550072E610 /* module.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; path = module.modulemap; sourceTree = "<group>"; };
+		68ECEF5E2F3132550072E610 /* rtp-macos.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = "rtp-macos.a"; sourceTree = "<group>"; };
+		68ECEF5F2F3132550072E610 /* rtpmacos.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = rtpmacos.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -28,7 +31,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				68ECEED32F2FD3150072E610 /* RTPmacos.xcframework in Frameworks */,
+				68ECEF612F3134410072E610 /* rtp-macos.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -39,7 +42,7 @@
 			isa = PBXGroup;
 			children = (
 				686B78402F0E3150006DF34C /* rtp-ui */,
-				68BDFDC82F11E8D1002A2DA6 /* Frameworks */,
+				68ECEF572F31311F0072E610 /* Frameworks */,
 				686B783F2F0E3150006DF34C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -52,12 +55,24 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		68BDFDC82F11E8D1002A2DA6 /* Frameworks */ = {
+		68ECEF572F31311F0072E610 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				68BDFDC92F11E8D1002A2DA6 /* RTPmacos.xcframework */,
+				68ECEF602F3132550072E610 /* libs */,
+				68ECEF582F31311F0072E610 /* rtp-macos.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		68ECEF602F3132550072E610 /* libs */ = {
+			isa = PBXGroup;
+			children = (
+				68ECEF5D2F3132550072E610 /* module.modulemap */,
+				68ECEF5E2F3132550072E610 /* rtp-macos.a */,
+				68ECEF5F2F3132550072E610 /* rtpmacos.h */,
+			);
+			name = libs;
+			path = rtp/libs;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -281,11 +296,16 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[arch=*]" = "$(PROJECT_DIR)/rtp/libs";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Dude. It's a video app.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/rtp/libs",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "sebastian-tran.rtp-ui";
@@ -295,8 +315,10 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				"SWIFT_INCLUDE_PATHS[arch=*]" = "$(PROJECT_DIR)/rtp/libs";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				"USER_HEADER_SEARCH_PATHS[arch=*]" = "$(PROJECT_DIR)/rtp/libs";
 			};
 			name = Debug;
 		};
@@ -323,11 +345,16 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[arch=*]" = "$(PROJECT_DIR)/rtp/libs";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Dude. It's a video app.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/rtp/libs",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "sebastian-tran.rtp-ui";
@@ -337,8 +364,10 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				"SWIFT_INCLUDE_PATHS[arch=*]" = "/Users/sebastiantran/Documents/Research/rtp-ui/rtp/libs";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				"USER_HEADER_SEARCH_PATHS[arch=*]" = "$(PROJECT_DIR)/rtp/libs";
 			};
 			name = Release;
 		};

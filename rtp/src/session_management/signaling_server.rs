@@ -13,17 +13,18 @@ static FRAME_PEERS: OnceLock<Arc<PeerManager>> = OnceLock::new();
 static LISTENER: OnceCell<TcpListener> = OnceCell::const_new();
 static VIDEO_CONTEXT: OnceLock<SpsPpsContext> = OnceLock::new();
 
-pub type SpsPpsCallback = extern "C" fn(
-    context: *mut std::ffi::c_void, 
-    pps: *const u8, 
-    pps_length: usize, 
-    sps: *const u8, 
-    sps_length: usize
-);
+unsafe extern "C" {
+    fn swift_receive_pps_sps (
+        context: *mut std::ffi::c_void, 
+        pps: *const u8, 
+        pps_length: usize, 
+        sps: *const u8, 
+        sps_length: usize
+    );
+}
 
 struct SpsPpsContext {
     context: *mut std::ffi::c_void,
-    callback: SpsPpsCallback
 }
 
 // BAD BAD BAD!
@@ -81,8 +82,8 @@ pub extern "C" fn rust_set_signalling_addr(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_send_video_callback (context: *mut std::ffi::c_void, callback: SpsPpsCallback){
-    let _ = VIDEO_CONTEXT.set(SpsPpsContext { context, callback });
+pub extern "C" fn rust_send_video_callback (context: *mut std::ffi::c_void){
+    let _ = VIDEO_CONTEXT.set(SpsPpsContext { context });
 }
 
 #[unsafe(no_mangle)]
@@ -254,8 +255,9 @@ async fn handle_signaling_client (
 
     let context = VIDEO_CONTEXT.get().unwrap();
 
-    (context.callback)(context.context, request[3].as_ptr(), request[3].len(), request[4].as_ptr(), request[4].len());
-
+    unsafe {
+        swift_receive_pps_sps(context.context, request[3].as_ptr(), request[3].len(), request[4].as_ptr(), request[4].len());
+    }
    Ok(()) 
 }
 
@@ -364,6 +366,13 @@ async fn add_peers (peer_manager: &Arc<PeerManager>, signaling_addr: &str, packe
 
     let context = VIDEO_CONTEXT.get().unwrap();
 
-    (context.callback)(context.context, data[2].as_ptr(), data[2].len(), data[3].as_ptr(), data[3].len());
+    unsafe { 
+        swift_receive_pps_sps(
+            context.context, 
+            data[2].as_ptr(), 
+            data[2].len(), 
+            data[3].as_ptr(), 
+            data[3].len());
+    }
     Ok(())
 }

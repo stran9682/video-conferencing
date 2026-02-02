@@ -16,12 +16,13 @@ class PeerVideoManager {
     init() {
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         
-        rust_send_video_callback(refcon, swift_receive_pps_sps)
+        rust_send_video_callback(refcon)
     }
  
 }
 
-func swift_receive_pps_sps(
+@_cdecl("swift_receive_pps_sps")
+public func swift_receive_pps_sps(
     _ context: UnsafeMutableRawPointer?,
     _ pps: UnsafePointer<UInt8>?,
     _ ppsLength: UInt,
