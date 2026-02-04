@@ -127,7 +127,7 @@ class CameraManager: NSObject {
     }
 }
 
-extension CameraManager : AVCaptureVideoDataOutputSampleBufferDelegate { // honestly what the fuck
+extension CameraManager : AVCaptureVideoDataOutputSampleBufferDelegate { // honestly what
     
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,

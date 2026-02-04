@@ -19,7 +19,8 @@ unsafe extern "C" {
         pps: *const u8, 
         pps_length: usize, 
         sps: *const u8, 
-        sps_length: usize
+        sps_length: usize,
+        addr: *const u8
     );
 }
 
@@ -256,7 +257,14 @@ async fn handle_signaling_client (
     let context = VIDEO_CONTEXT.get().unwrap();
 
     unsafe {
-        swift_receive_pps_sps(context.context, request[3].as_ptr(), request[3].len(), request[4].as_ptr(), request[4].len());
+        swift_receive_pps_sps(
+            context.context, 
+            request[3].as_ptr(), 
+            request[3].len(),
+            request[4].as_ptr(),
+            request[4].len(),
+            media_addr.to_string().as_ptr()
+        );
     }
    Ok(()) 
 }
@@ -372,7 +380,9 @@ async fn add_peers (peer_manager: &Arc<PeerManager>, signaling_addr: &str, packe
             data[2].as_ptr(), 
             data[2].len(), 
             data[3].as_ptr(), 
-            data[3].len());
+            data[3].len(),
+            media_addr.to_string().as_ptr()
+        );
     }
     Ok(())
 }

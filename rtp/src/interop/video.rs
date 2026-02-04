@@ -165,7 +165,7 @@ pub fn get_fragments(payload : &[u8], rtp_session : &mut RTPSession, is_last_uni
 
 pub fn get_nal_units(data: &[u8]) -> Vec<&[u8]> {
 
-    println!("{}", data.len());
+    //println!("{}", data.len());
 
     let mut nal_units = Vec::new();
 
@@ -334,7 +334,7 @@ pub async fn rtp_frame_receiver(
 
         peer_manager.add_playout_node_to_peer(addr, node, fragment);
 
-        println!("{}: {}", addr.to_string(), str::from_utf8(&buffer[..bytes_read]).unwrap());
+        println!("{}: {}", addr.to_string(), bytes_read);
 
         // TODO : Send to swift
     }

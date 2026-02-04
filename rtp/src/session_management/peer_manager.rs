@@ -101,11 +101,11 @@ impl PeerManager {
 
                 let coded_data = &mut peer.playout_buffer[index].coded_data;
 
-                match coded_data.binary_search_by_key(&fragment.sequence_num, |frag| frag.sequence_num) {
-                    _ => {
-                        coded_data.insert(index, fragment);
-                    }
-                }
+                let index = coded_data
+                    .binary_search_by_key(&fragment.sequence_num, |frag| frag.sequence_num)
+                    .unwrap_or_else(|i| i);
+
+                coded_data.insert(index, fragment);
             }
             Err(index) => {
                 playout_buffer_node.coded_data.push(fragment);

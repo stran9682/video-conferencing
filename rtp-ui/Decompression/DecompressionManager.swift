@@ -49,6 +49,8 @@ class DecompressionManager {
         }
     }
     
+    
+    // this is called as part of the callback from decompression.
     func processImage(_ image: CVImageBuffer, time: CMTime, duration: CMTime) {
         
         var sampleBuffer: CMSampleBuffer?
@@ -78,7 +80,29 @@ class DecompressionManager {
 //        if let sb = sampleBuffer {
 //            handler?(sb)
 //        }
+        
+        // MARK: UPDATE THE PREVIEW STREAM
     }
+    
+    func decode (sampleBuffer: CMSampleBuffer) {
+        guard let session = session else { return }
+        
+        let flags = VTDecodeFrameFlags._1xRealTimePlayback
+        let status = VTDecompressionSessionDecodeFrame(session, sampleBuffer: sampleBuffer, flags: flags, frameRefcon: nil, infoFlagsOut: nil)
+
+    }
+    
+    private var addToPreviewStream: ((CGImage) -> Void)?
+    
+    //  manages the continuous stream of data provided by it
+    //  through an AVCaptureVideoDataOutputSampleBufferDelegate object.
+    lazy var previewStream: AsyncStream<CGImage> = {
+        AsyncStream { continuation in
+            addToPreviewStream = { cgImage in
+                continuation.yield(cgImage)
+            }
+        }
+    }()
 }
 
 var callback: VTDecompressionOutputCallback = { refcon, sourceFrameRefCon, status, infoFlags, imageBuffer, time, duration in
