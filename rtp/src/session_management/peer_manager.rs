@@ -15,6 +15,7 @@ pub struct Fragment {
 }
 
 pub struct Peer {
+    swift_peer_model: *mut std::ffi::c_void,
     window : VecDeque<u128>,
     min_window : u128,
     playout_buffer : Vec<PlayoutBufferNode>
@@ -42,6 +43,10 @@ impl Peer {
     }
 }
 
+// BAD BAD BAD!
+unsafe impl Send for Peer { }
+unsafe impl Sync for Peer { }
+
 pub struct PeerManager {
     peers: DashMap<SocketAddr, Peer>,
     pub local_addr: SocketAddr,
@@ -55,14 +60,15 @@ impl PeerManager {
         }
     }
 
-    pub fn add_peer(&self, addr: SocketAddr) -> bool {
+    pub fn add_peer(&self, addr: SocketAddr, swift_peer_model: *mut std::ffi::c_void) -> bool {
         let peers = &self.peers;
       
         if  !peers.contains_key(&addr) && addr != self.local_addr {
             peers.insert(addr, Peer{
                 window: VecDeque::new(),
                 min_window: MAX,
-                playout_buffer: Vec::new()
+                playout_buffer: Vec::new(),
+                swift_peer_model
             });
 
             true

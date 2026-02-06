@@ -11,7 +11,7 @@ const BUFFER_SIZE: usize = 1500;
 static AUDIO_PEERS: OnceLock<Arc<PeerManager>> = OnceLock::new();
 static FRAME_PEERS: OnceLock<Arc<PeerManager>> = OnceLock::new();
 static LISTENER: OnceCell<TcpListener> = OnceCell::const_new();
-static VIDEO_CONTEXT: OnceLock<SpsPpsContext> = OnceLock::new();
+static PEER_VIDEO_CONTEXT: OnceLock<PeerVideoManagerContext> = OnceLock::new();
 
 unsafe extern "C" {
     fn swift_receive_pps_sps (
@@ -21,16 +21,16 @@ unsafe extern "C" {
         sps: *const u8, 
         sps_length: usize,
         addr: *const u8
-    );
+    ) -> *mut std::ffi::c_void;
 }
 
-struct SpsPpsContext {
+struct PeerVideoManagerContext {
     context: *mut std::ffi::c_void,
 }
 
 // BAD BAD BAD!
-unsafe impl Send for SpsPpsContext { }
-unsafe impl Sync for SpsPpsContext { }
+unsafe impl Send for PeerVideoManagerContext { }
+unsafe impl Sync for PeerVideoManagerContext { }
 
 struct H264Args{
     sps: Bytes,
@@ -84,7 +84,7 @@ pub extern "C" fn rust_set_signalling_addr(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_send_video_callback (context: *mut std::ffi::c_void){
-    let _ = VIDEO_CONTEXT.set(SpsPpsContext { context });
+    let _ = PEER_VIDEO_CONTEXT.set(PeerVideoManagerContext { context });
 }
 
 #[unsafe(no_mangle)]
@@ -251,12 +251,11 @@ async fn handle_signaling_client (
         .parse()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    peer_manager.add_peer(media_addr);
-    specifications.add_peer(signaling_addr);
+    let Some(context) = PEER_VIDEO_CONTEXT.get() else {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "Peer video manager likely not initialized"))
+    };
 
-    let context = VIDEO_CONTEXT.get().unwrap();
-
-    unsafe {
+    let swift_peer_model = unsafe {
         swift_receive_pps_sps(
             context.context, 
             request[3].as_ptr(), 
@@ -264,8 +263,12 @@ async fn handle_signaling_client (
             request[4].as_ptr(),
             request[4].len(),
             media_addr.to_string().as_ptr()
-        );
-    }
+        )
+    };
+
+    peer_manager.add_peer(media_addr, swift_peer_model);
+    specifications.add_peer(signaling_addr);
+
    Ok(()) 
 }
 
@@ -356,7 +359,20 @@ async fn add_peers (peer_manager: &Arc<PeerManager>, signaling_addr: &str, packe
         .parse()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    peer_manager.add_peer(media_addr);
+    let context = PEER_VIDEO_CONTEXT.get().unwrap();
+
+    let swift_peer_model = unsafe { 
+        swift_receive_pps_sps(
+            context.context, 
+            data[2].as_ptr(), 
+            data[2].len(), 
+            data[3].as_ptr(), 
+            data[3].len(),
+            media_addr.to_string().as_ptr()
+        )
+    };
+
+    peer_manager.add_peer(media_addr, swift_peer_model);
 
     let signaling_addr: SocketAddr = signaling_addr
         .parse()
@@ -372,17 +388,5 @@ async fn add_peers (peer_manager: &Arc<PeerManager>, signaling_addr: &str, packe
         addresses.push(str.to_string());
     }
 
-    let context = VIDEO_CONTEXT.get().unwrap();
-
-    unsafe { 
-        swift_receive_pps_sps(
-            context.context, 
-            data[2].as_ptr(), 
-            data[2].len(), 
-            data[3].as_ptr(), 
-            data[3].len(),
-            media_addr.to_string().as_ptr()
-        );
-    }
     Ok(())
 }

@@ -43,8 +43,8 @@ class PeerVideoModel: Hashable {
     }
     
     // every time a frame comes in, place into decompression manager
-    func decompressFrame(_ frameArguments: FrameArguments?) {
-        decompressionManager.decode(sampleBuffer: <#T##CMSampleBuffer#>)
+    func decompressFrame() {
+
     }
  
     // hasheable stuff
@@ -67,5 +67,5 @@ public func swift_receive_frame(
     let peerVideoModel = Unmanaged<PeerVideoModel>.fromOpaque(context).takeUnretainedValue()
     
     // MARK: Send to be decompressed.
-    peerVideoModel.decompressFrame(frameData)
+    peerVideoModel.decompressFrame()
 }

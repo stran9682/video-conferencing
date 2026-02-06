@@ -1,4 +1,4 @@
-use std::{ env, io, sync::Arc};
+use std::{ env, io, os::raw::c_void, sync::Arc};
 use bytes::{BufMut, Bytes};
 use tokio::{ net::{UdpSocket}};
 use rtp::{interop::StreamType, packets::rtp::RTPHeader, session_management::{peer_manager::PeerManager, signaling_server::{ PEER_SPECIFICATIONS, PeerSpecifications, connect_to_signaling_server, run_signaling_server}}};
@@ -88,9 +88,9 @@ async fn rtp_receiver(
     loop {
         let (bytes_read, addr) = socket.recv_from(&mut buffer).await?;
 
-        if peer_manager.add_peer(addr) {
-            println!("new peer from: {}", addr);
-        }
+        // if peer_manager.add_peer(addr, ) {
+        //     println!("new peer from: {}", addr);
+        // }
 
         let mut bytes = bytes::BytesMut::new();
         bytes.put_slice(&buffer[..bytes_read]);

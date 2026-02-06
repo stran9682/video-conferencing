@@ -12,19 +12,17 @@ import RTPmacos
 @Observable
 class PeerVideoManager {
     
+    // observing this in particular to get video feeds of our peers
     private var peers: Dictionary<String, PeerView> = [:]
     
     init() {
-        // send the context to rust!
-        let refcon = Unmanaged.passUnretained(self).toOpaque()
-        rust_send_video_callback(refcon)
+        
     }
     
-    func addPeer(pps: [UInt8], sps: [UInt8], address: String) {
-        let newView = PeerView(peerVideoModel: PeerVideoModel(pps: pps, sps: sps))
+    func addPeer(peerView : PeerView, address: String) {
         
         DispatchQueue.main.async {
-            self.peers[address] = newView
+            self.peers[address] = peerView
         }
         
     }
@@ -38,11 +36,11 @@ public func swift_receive_pps_sps(
     _ sps: UnsafePointer<UInt8>?,
     _ spsLength: UInt,
     _ addr: UnsafePointer<UInt8>?,
-) {
+) -> UnsafeMutableRawPointer? {
     guard
         let context = context,
         let addr = addr
-    else { return }
+    else { return nil }
     
     let peerVideoManager = Unmanaged<PeerVideoManager>.fromOpaque(context).takeUnretainedValue()
     
@@ -51,8 +49,12 @@ public func swift_receive_pps_sps(
     let sps = Array(UnsafeBufferPointer(start: sps, count: Int(spsLength)))
     let address = String(cString: addr)
     
-    peerVideoManager.addPeer(pps: pps, sps: sps, address: address)
-   
-    // MARK: return the pointer of the peer
+    let model = PeerVideoModel(pps: pps, sps: sps)
+    let view = PeerView(peerVideoModel: model)
+    
+    peerVideoManager.addPeer(peerView: view, address: address)
+
+    // MARK: return the pointer of the peer model
+    return Unmanaged.passRetained(model).toOpaque()
 }
 
