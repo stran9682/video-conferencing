@@ -32,3 +32,5 @@ bool rust_send_frame(const uint8_t *data,
                      ReleaseCallback release_callback);
 
 void run_runtime_server(enum StreamType stream);
+
+extern void swift_receive_frame(void *context, const uint8_t *frameData);

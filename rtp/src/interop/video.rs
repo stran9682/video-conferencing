@@ -9,9 +9,16 @@ use crate::packets::rtp::RTPHeader;
 use crate::session_management::peer_manager::{Fragment, PlayoutBufferNode};
 use crate::{packets::rtp::RTPSession, session_management::peer_manager::PeerManager};
 
-static FRAME_OUTPUT: OnceLock<Arc<PeerManager>> = OnceLock::new();
+//static FRAME_OUTPUT: OnceLock<Arc<PeerManager>> = OnceLock::new();
 
 const AVCC_HEADER_LENGTH: usize = 4;
+
+unsafe extern "C" {
+    fn swift_receive_frame (
+        context: *mut std::ffi::c_void, 
+        frameData: *const u8
+    );
+}
 
 pub type ReleaseCallback = extern "C" fn(*mut std::ffi::c_void);
 
@@ -83,7 +90,11 @@ pub async fn rtp_frame_sender(
     }
 }
 
-pub fn get_fragments(payload : &[u8], rtp_session : &mut RTPSession, is_last_unit: bool) -> Vec<Bytes> {
+pub fn get_fragments(
+    payload : &[u8], 
+    rtp_session : &mut RTPSession, 
+    is_last_unit: bool
+) -> Vec<Bytes> {
     let mut payloads = Vec::new();
 
     let max_fragment_size = 1200; // low key a magic number...
@@ -230,24 +241,44 @@ pub fn rtp_to_avcc_h264 (packets : Vec<Bytes>) -> *const u8{
     let mut payload = BytesMut::new();
     let mut fua_buffer = BytesMut::new();
 
-    let b0 = packets[0][0];
-    let nalu_type = b0 & 0x1F;
-
     for packet in packets {
+        let b0 = packet[0];
+        let nalu_type = b0 & 0x1F;
+
         match nalu_type {
-            1..=23 => {
-                payload.put_u32(packet.len() as u32);
+            /*
+                Just one packet! 
+                Thanks to h264, these are just on top of RTP headers
+
+                +---------------+
+                |0|1|2|3|4|5|6|7|
+                +-+-+-+-+-+-+-+-+
+                |F|NRI|  Type   |
+                +---------------+
+             */
+            1..=23 => { 
+                payload.put_u32(packet.len() as u32); // add the AVCC format header
                 payload.put(packet);
             }
 
-            // lala skip a few. Shouldn't need these!!
+            // lala skip a few. Shouldn't need these!! 
+            // (Aggregate Packets not implemented)
 
+            /*
+                Split packets require a bit of reconstruction
+
+                +---------------+---------------+
+                |0|1|2|3|4|5|6|7|0|1|2|3|4|5|6|7|
+                +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                |F|NRI|  Type   |S|E|R|  Type   |
+                +---------------+---------------+
+             */
             28 => {
                 fua_buffer.put(packet.slice(2 as usize..)); // just payload, skip the header.
 
                 let b1 = packet[1];
+                if b1 & 0x40 != 0 { // if end bit
 
-                if b1 & 0x40 != 0 {
                     let nalu_ref_idc = b0 & 0x60;
                     let fragmented_nalu_type = b1 & 0x1F;
 
@@ -256,7 +287,9 @@ pub fn rtp_to_avcc_h264 (packets : Vec<Bytes>) -> *const u8{
                     payload.put_u8(nalu_ref_idc | fragmented_nalu_type);
                     payload.put(fua_buffer);
 
-                    fua_buffer = BytesMut::new(); // real dirty, I know... clears the buffer if there's any other fua packets.
+                    // real dirty, I know... 
+                    // clears the buffer when there's any other fua packets associated with the timestamp.
+                    fua_buffer = BytesMut::new(); 
                 }
             }
 
@@ -275,7 +308,7 @@ pub async fn rtp_frame_receiver(
 
     let mut buffer = [0u8; 1500];
 
-    let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
+    // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
     
     loop {
         let (bytes_read, addr) = socket.recv_from(&mut buffer).await?;
@@ -334,8 +367,28 @@ pub async fn rtp_frame_receiver(
 
         peer_manager.add_playout_node_to_peer(addr, node, fragment);
 
-        println!("{}: {}", addr.to_string(), bytes_read);
+        // Send to swift
+        if header.marker {
+            let Some(frame) = peer_manager.pop_node(addr) else {
+                continue;
+            };
 
-        // TODO : Send to swift
+            let frame_len = frame.coded_data.len();
+
+            let frame_bytes: Vec<Bytes> = frame.coded_data.into_iter().map(|frame| frame.data).collect(); 
+
+            let frame_ptr = rtp_to_avcc_h264(frame_bytes);
+
+            let Some(context) = peer_manager.get_context(addr) else {
+                continue;
+            };
+
+            unsafe {
+                swift_receive_frame(context, frame_ptr);
+            }
+        }
+
+        //println!("{}: {}", addr.to_string(), bytes_read);
+
     }
 }

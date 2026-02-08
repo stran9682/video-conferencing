@@ -60,6 +60,16 @@ impl PeerManager {
         }
     }
 
+    pub fn get_context(&self, addr: SocketAddr) -> Option<*mut std::ffi::c_void>{
+        if  self.peers.contains_key(&addr)  {
+            let peer = self.peers.get(&addr);
+
+            Some(peer.unwrap().swift_peer_model)
+        } else {
+            None
+        }
+    }
+
     pub fn add_peer(&self, addr: SocketAddr, swift_peer_model: *mut std::ffi::c_void) -> bool {
         let peers = &self.peers;
       
