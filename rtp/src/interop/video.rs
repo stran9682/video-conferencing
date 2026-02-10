@@ -1,4 +1,3 @@
-use std::sync::OnceLock;
 use std::{io, sync::Arc};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,7 +15,8 @@ const AVCC_HEADER_LENGTH: usize = 4;
 unsafe extern "C" {
     fn swift_receive_frame (
         context: *mut std::ffi::c_void, 
-        frameData: *const u8
+        frameData: *mut std::ffi::c_void,
+        frameDataLength: usize
     );
 }
 
@@ -237,7 +237,7 @@ pub fn get_nal_units(data: &[u8]) -> Vec<&[u8]> {
     nal_units
 }
 
-pub fn rtp_to_avcc_h264 (packets : Vec<Bytes>) -> *const u8{
+pub fn rtp_to_avcc_h264 (packets : Vec<Bytes>) -> BytesMut{
     let mut payload = BytesMut::new();
     let mut fua_buffer = BytesMut::new();
 
@@ -297,7 +297,7 @@ pub fn rtp_to_avcc_h264 (packets : Vec<Bytes>) -> *const u8{
         }
     };
 
-    return payload.freeze().as_ptr()
+    return payload
 }
 
 pub async fn rtp_frame_receiver(
@@ -373,18 +373,23 @@ pub async fn rtp_frame_receiver(
                 continue;
             };
 
-            let frame_len = frame.coded_data.len();
-
             let frame_bytes: Vec<Bytes> = frame.coded_data.into_iter().map(|frame| frame.data).collect(); 
 
-            let frame_ptr = rtp_to_avcc_h264(frame_bytes);
+            let mut frame_data = rtp_to_avcc_h264(frame_bytes);
+            let frame_data_length = frame_data.len();
+
+            //println!("{:?}", &frame_data[0..4]);
 
             let Some(context) = peer_manager.get_context(addr) else {
                 continue;
             };
 
             unsafe {
-                swift_receive_frame(context, frame_ptr);
+                swift_receive_frame(
+                    context, 
+                    frame_data.as_mut_ptr() as *mut std::ffi::c_void,
+                    frame_data_length
+                );
             }
         }
 

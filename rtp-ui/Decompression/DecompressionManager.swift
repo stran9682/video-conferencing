@@ -10,14 +10,13 @@ import VideoToolbox
 
 class DecompressionManager {
     var session: VTDecompressionSession?
+    var formatDescription: CMFormatDescription?
         
     init (sps: UnsafePointer<UInt8>, spsLength: Int, pps: UnsafePointer<UInt8>, ppsLength: Int) {
        
         let paramSetPointers: [UnsafePointer<UInt8>] = [sps, pps]
         
         let parameterSetSizes: [Int] = [spsLength, ppsLength]
-                
-        var formatDescription: CMFormatDescription?
         
         CMVideoFormatDescriptionCreateFromH264ParameterSets(
             allocator: kCFAllocatorDefault,
@@ -32,6 +31,7 @@ class DecompressionManager {
             kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: true as CFBoolean
         ] as CFDictionary
         
+        // sets what object will be calling the callback (this one lol)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         var callbackRecord = VTDecompressionOutputCallbackRecord(
             decompressionOutputCallback: callback,
@@ -81,7 +81,7 @@ class DecompressionManager {
 //            handler?(sb)
 //        }
         
-        // MARK: UPDATE THE PREVIEW STREAM
+        // MARK: UPDATE THE PREVIEW STREAM, back to the main thread!
     }
     
     func decode (sampleBuffer: CMSampleBuffer) {
@@ -110,7 +110,9 @@ var callback: VTDecompressionOutputCallback = { refcon, sourceFrameRefCon, statu
           status == noErr,
           let imageBuffer = imageBuffer
     else {
-        print("VTDecompressionOutputCallback \(status)")
+        let errorMessage = SecCopyErrorMessageString(status, nil) as String? ?? "Unknown"
+        
+        print("VTDecompressionOutputCallback \(errorMessage)")
         return
     }
     

@@ -9,22 +9,19 @@ import Foundation
 import CoreImage
 import VideoToolbox
 
-class PeerVideoModel: Hashable {
+@Observable
+class PeerVideoModel {
     
     var currentFrame: CGImage?
     
     private var decompressionManager: DecompressionManager
-    private var sps : [UInt8] = []
-    private var pps : [UInt8] = []
 
     init(pps: [UInt8], sps: [UInt8]) {
-        self.pps = pps
-        self.sps = sps
         
         decompressionManager = DecompressionManager(
-            sps: self.sps,
+            sps: sps,
             spsLength: sps.count,
-            pps: self.pps,
+            pps: pps,
             ppsLength: pps.count
         )
         
@@ -36,38 +33,57 @@ class PeerVideoModel: Hashable {
     // update image every time frame is done being processed
     func handleFramePreviews() async {
         for await image in decompressionManager.previewStream {
-            Task {
-                @MainActor in currentFrame = image
+            Task { @MainActor in
+                currentFrame = image
             }
         }
     }
     
     // every time a frame comes in, place into decompression manager
-    func decompressFrame() {
-
-    }
- 
-    // hasheable stuff
-    static func == (lhs: PeerVideoModel, rhs: PeerVideoModel) -> Bool {
-        ObjectIdentifier(lhs) == ObjectIdentifier(rhs)
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(ObjectIdentifier(self))
+    func decompressFrame(blockBuffer : CMBlockBuffer) {
+        var sampleBuffer: CMSampleBuffer?
+        
+        let status = CMSampleBufferCreate(allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: decompressionManager.formatDescription, sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sampleBuffer)
+        
+        if let sampleBuffer = sampleBuffer, status == noErr{
+            decompressionManager.decode(sampleBuffer: sampleBuffer)
+        }
+        else {
+            print("\(status)")
+        }
     }
 }
 
 @_cdecl("swift_receive_frame")
 public func swift_receive_frame(
     _ context: UnsafeMutableRawPointer?,
-    _ frameData: UnsafePointer<UInt8>?
+    _ frameData: UnsafeMutableRawPointer?,
+    _ frameDataLength: UInt
 ) {
-    print("Just got a frame!")
-    
     guard let context = context, let frameData = frameData else { return }
     
     let peerVideoModel = Unmanaged<PeerVideoModel>.fromOpaque(context).takeUnretainedValue()
     
-    // MARK: Send to be decompressed.
-    peerVideoModel.decompressFrame()
+    // TODO: I'm copying for now, but look into a zero copy solution.
+    let frameDataCopy = UnsafeMutableRawPointer.allocate(byteCount: Int(frameDataLength), alignment: 16)
+    
+    frameDataCopy.copyMemory(from: frameData, byteCount: Int(frameDataLength))
+    
+    var blockBuffer: CMBlockBuffer?
+    
+    let status = CMBlockBufferCreateWithMemoryBlock(
+        allocator: kCFAllocatorDefault,
+        memoryBlock: frameDataCopy,
+        blockLength: Int(frameDataLength),
+        blockAllocator: kCFAllocatorDefault,
+        customBlockSource: nil,
+        offsetToData: 0,
+        dataLength: Int(frameDataLength),
+        flags: 0,
+        blockBufferOut: &blockBuffer)
+    
+    if status == noErr, let blockBuffer = blockBuffer {
+        // MARK: Send to be decompressed.
+        peerVideoModel.decompressFrame(blockBuffer: blockBuffer)
+    }
 }
