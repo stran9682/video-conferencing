@@ -43,7 +43,23 @@ class PeerVideoModel {
     func decompressFrame(blockBuffer : CMBlockBuffer) {
         var sampleBuffer: CMSampleBuffer?
         
-        let status = CMSampleBufferCreate(allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: decompressionManager.formatDescription, sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sampleBuffer)
+        var timingInfo = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: .invalid, // Or your actual RTP timestamp
+            decodeTimeStamp: .invalid
+        )
+
+        let status = CMSampleBufferCreateReady(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: blockBuffer,
+            formatDescription: decompressionManager.formatDescription,
+            sampleCount: 1,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timingInfo,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
+            sampleBufferOut: &sampleBuffer
+        )
         
         if let sampleBuffer = sampleBuffer, status == noErr{
             decompressionManager.decode(sampleBuffer: sampleBuffer)
@@ -54,6 +70,31 @@ class PeerVideoModel {
     }
 }
 
+
+func auditNALU(data: UnsafeMutableRawPointer, length: Int) {
+    // 1. Move past the 4-byte AVCC length header
+    let payload = data.assumingMemoryBound(to: UInt8.self).advanced(by: 4)
+    
+    // 2. The first byte of the NALU is the header
+    let headerByte = payload.pointee
+    
+    // 3. Extract the NALU Type (lower 5 bits)
+    let naluType = headerByte & 0x1F
+    
+    let typeName: String
+    switch naluType {
+    case 1:  typeName = "P-Frame (Non-IDR Slice)"
+    case 5:  typeName = "IDR-Frame (Key Frame)"
+    case 6:  typeName = "SEI (Supplemental Information)"
+    case 7:  typeName = "SPS (Sequence Parameter Set)"
+    case 8:  typeName = "PPS (Picture Parameter Set)"
+    case 9:  typeName = "AUD (Access Unit Delimiter)"
+    default: typeName = "Unknown (\(naluType))"
+    }
+    
+    print("NALU Type: \(naluType) [\(typeName)] | Header Byte: \(String(format: "%02X", headerByte))")
+}
+
 @_cdecl("swift_receive_frame")
 public func swift_receive_frame(
     _ context: UnsafeMutableRawPointer?,
@@ -61,6 +102,8 @@ public func swift_receive_frame(
     _ frameDataLength: UInt
 ) {
     guard let context = context, let frameData = frameData else { return }
+    
+    auditNALU(data: frameData, length: Int(frameDataLength))
     
     let peerVideoModel = Unmanaged<PeerVideoModel>.fromOpaque(context).takeUnretainedValue()
     

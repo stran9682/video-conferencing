@@ -2,7 +2,7 @@ use core::slice;
 use std::{collections::HashSet, net::SocketAddr, sync::{Arc, OnceLock}};
 use bytes::{BufMut, Bytes, BytesMut};
 use dashmap::DashSet;
-use tokio::{io::{self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream }, sync::OnceCell};
+use tokio::{io::{self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream }, sync::{Mutex, OnceCell}};
 
 use crate::{interop::{StreamType, runtime}, session_management::peer_manager::PeerManager};
 
@@ -12,6 +12,8 @@ static AUDIO_PEERS: OnceLock<Arc<PeerManager>> = OnceLock::new();
 static FRAME_PEERS: OnceLock<Arc<PeerManager>> = OnceLock::new();
 static LISTENER: OnceCell<TcpListener> = OnceCell::const_new();
 static PEER_VIDEO_CONTEXT: OnceLock<PeerVideoManagerContext> = OnceLock::new();
+static PEER_SPECIFICATIONS : OnceLock<PeerSpecifications> = OnceLock::new();
+static SIGNALLING_ADDR: OnceLock<String> = OnceLock::new();
 
 unsafe extern "C" {
     fn swift_receive_pps_sps (
@@ -32,21 +34,21 @@ struct PeerVideoManagerContext {
 unsafe impl Send for PeerVideoManagerContext { }
 unsafe impl Sync for PeerVideoManagerContext { }
 
-struct H264Args{
+pub struct H264Args{
     sps: Bytes,
     pps: Bytes,
 }
 
 pub struct PeerSpecifications {
     peer_signaling_address : DashSet<SocketAddr>,
-    self_h264_args : H264Args
+    self_h264_args : Mutex<H264Args>
 }
 
 impl PeerSpecifications {
-    pub fn new (pps: Bytes, sps: Bytes) -> Self {
+    pub fn new (h264_args: H264Args) -> Self {
         Self {
             peer_signaling_address : DashSet::new(),
-            self_h264_args: H264Args { sps, pps }
+            self_h264_args: Mutex::new(h264_args)
         }
     }
 
@@ -58,9 +60,6 @@ impl PeerSpecifications {
         self.peer_signaling_address.insert(addr);
     }
 }
-
-pub static PEER_SPECIFICATIONS : OnceLock<PeerSpecifications> = OnceLock::new();
-static SIGNALLING_ADDR: OnceLock<String> = OnceLock::new();
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_set_signalling_addr(
@@ -107,7 +106,14 @@ pub extern "C" fn rust_send_h264_config (
 
     let sps = Bytes::copy_from_slice(sps);
 
-    let _ = PEER_SPECIFICATIONS.set(PeerSpecifications::new(pps, sps));
+    // updating your specs vs just setting them
+    // when we update, we don't want to get rid of all your friends!
+    if let Some(old_specs) = PEER_SPECIFICATIONS.get() {
+        let mut old_specs = old_specs.self_h264_args.blocking_lock();
+        *old_specs = H264Args { sps, pps }
+    } else {
+        let _ = PEER_SPECIFICATIONS.set(PeerSpecifications::new(H264Args { sps, pps }));
+    }
 
     let host_addr_str = match SIGNALLING_ADDR.get() {
         Some(addr) => Some(addr.to_owned()),
@@ -218,11 +224,13 @@ async fn handle_signaling_client (
         return Err(io::Error::new(io::ErrorKind::NotFound, "Specification manager not initialized"));
     };
 
+    let h264_args = specifications.self_h264_args.lock().await;
+
     match stream_type {
         StreamType::Video => {        
-            response.put_slice(&specifications.self_h264_args.pps);
+            response.put_slice(&h264_args.pps);
             response.put_slice(b"\r\n");
-            response.put_slice(&specifications.self_h264_args.sps);
+            response.put_slice(&h264_args.sps);
             
             let signaling = specifications.get_peers();
             for addr in signaling {
@@ -312,9 +320,11 @@ pub async fn connect_to_signaling_server(
             // STILL WORKING ON IT!
         }
         StreamType::Video => {
-            packet.put_slice(&peer_specs.self_h264_args.pps);
+            let h264_args = peer_specs.self_h264_args.lock().await;
+
+            packet.put_slice(&h264_args.pps);
             packet.put_slice(b"\r\n");
-            packet.put_slice(&peer_specs.self_h264_args.sps);
+            packet.put_slice(&h264_args.sps);
         }
     }
 

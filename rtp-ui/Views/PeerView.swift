@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-struct PeerView: View {
-    
+struct PeerView: View, Identifiable {
+    var id = UUID()
     @State private var peerVideoModel : PeerVideoModel
     
     init(peerVideoModel: PeerVideoModel) {
@@ -16,6 +16,7 @@ struct PeerView: View {
     }
     
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        CameraView(image: $peerVideoModel.currentFrame)
+            .frame(width: 300, height: 300)
     }
 }

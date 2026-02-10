@@ -20,7 +20,24 @@ struct ContentView: View {
         rust_send_video_callback(refcon)
     }
     
+    let layout = [
+       GridItem(.flexible(), spacing: 5),
+       GridItem(.flexible(), spacing: 5)
+   ]
+    
     var body: some View {
-        CameraView(image: $viewModel.currentFrame)
+        LazyVGrid(columns: layout) {
+            CameraView(image: $viewModel.currentFrame)
+                .frame(width:300, height: 300)
+            
+            ForEach(peerVideoManager.allPeers) { peer in
+                peer
+            }
+        }
+//        
+//        
+//        List(peerVideoManager.allPeers) { peer in
+//            peer
+//        }
     }
 }

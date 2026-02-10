@@ -12,6 +12,8 @@ import RTPmacos
 class CompressionManager {
     
     private var compressionSessionOut: VTCompressionSession?
+    var pps: [UInt8]?
+    var sps: [UInt8]?
     
     init () {
         let videoEncoderSpecification = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true as CFBoolean] as CFDictionary
@@ -21,12 +23,23 @@ class CompressionManager {
                                          height: Int32(720),
                                          // MARK: Copied from above ^ in session create
                                          codecType: kCMVideoCodecType_H264,
-                                         encoderSpecification: videoEncoderSpecification,
+                                         encoderSpecification: nil,
                                          imageBufferAttributes: nil,
                                          compressedDataAllocator: nil,
                                          outputCallback: outputCallback,
                                          refcon: Unmanaged.passUnretained(self).toOpaque(), // WHAT DOES THIS DO?
                                          compressionSessionOut: &compressionSessionOut)
+        
+        guard let compressionSession = compressionSessionOut else {
+            print("VTCompressionSession creation failed")
+            return
+        }
+        
+        VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
+        VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_Main_AutoLevel)
+        VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
+        VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: 30 as CFNumber)
+        VTCompressionSessionPrepareToEncodeFrames(compressionSession)
         
     }
     
@@ -117,12 +130,24 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
                 parameterSetCountOut: &pparamSetCount,
                 nalUnitHeaderLengthOut: nil)
             
-            if (p_statusCode == noErr && s_statusCode == noErr) {
-                rust_send_h264_config(pparameterSetPointer, UInt(pparamSetSize), sparameterSetPointer, UInt(sparamSetSize))
-            }
             
             let spsArray = Array(UnsafeBufferPointer(start: pparameterSetPointer, count: pparamSetSize))
-            print("let sps: [UInt8] = \(spsArray)")
+            
+            let ppsArray = Array(UnsafeBufferPointer(start: sparameterSetPointer, count: sparamSetSize))
+            
+            let compression = Unmanaged<CompressionManager>.fromOpaque(refcon).takeUnretainedValue()
+            
+            if (
+                compression.pps != ppsArray && compression.sps != spsArray &&
+                p_statusCode == noErr && s_statusCode == noErr
+            ) {
+                print("Updating compression config")
+                
+                compression.pps = ppsArray
+                compression.sps = spsArray
+                
+                rust_send_h264_config(pparameterSetPointer, UInt(pparamSetSize), sparameterSetPointer, UInt(sparamSetSize))
+            }
         }
     }
     

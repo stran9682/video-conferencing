@@ -47,12 +47,16 @@ class DecompressionManager {
                 outputCallback: &callbackRecord,
                 decompressionSessionOut: &session)
         }
+        
+        if let session = session {
+            VTSessionSetProperty(session, key: kVTDecompressionPropertyKey_RealTime, value: kCFBooleanTrue)
+        }
     }
     
     
     // this is called as part of the callback from decompression.
     func processImage(_ image: CVImageBuffer, time: CMTime, duration: CMTime) {
-        
+                
         var sampleBuffer: CMSampleBuffer?
         var sampleTiming = CMSampleTimingInfo(duration: duration, presentationTimeStamp: time, decodeTimeStamp: time)
 
@@ -81,14 +85,21 @@ class DecompressionManager {
 //            handler?(sb)
 //        }
         
-        // MARK: UPDATE THE PREVIEW STREAM, back to the main thread!
+        
+        var cgImage: CGImage?
+        
+        let error = VTCreateCGImageFromCVPixelBuffer(image, options: nil, imageOut: &cgImage)
+        
+        if error == noErr, let cgImage = cgImage {
+            addToPreviewStream?(cgImage)
+        }
     }
     
     func decode (sampleBuffer: CMSampleBuffer) {
         guard let session = session else { return }
         
         let flags = VTDecodeFrameFlags._1xRealTimePlayback
-        let status = VTDecompressionSessionDecodeFrame(session, sampleBuffer: sampleBuffer, flags: flags, frameRefcon: nil, infoFlagsOut: nil)
+        VTDecompressionSessionDecodeFrame(session, sampleBuffer: sampleBuffer, flags: flags, frameRefcon: nil, infoFlagsOut: nil)
 
     }
     

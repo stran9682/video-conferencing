@@ -15,6 +15,10 @@ class PeerVideoManager {
     // observing this in particular to get video feeds of our peers
     private var peers: Dictionary<String, PeerView> = [:]
     
+    var allPeers: [PeerView] {
+        Array(peers.values)
+    }
+    
     init() {
         
     }
