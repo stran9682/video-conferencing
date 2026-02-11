@@ -1,6 +1,8 @@
 pub mod video;
 pub mod audio;
 
+use local_ip_address::local_ip;
+
 use std::{io::{self}, sync::{Arc, OnceLock}};
 
 use tokio::{net::UdpSocket, runtime::Runtime, sync::mpsc};
@@ -80,9 +82,10 @@ async fn network_loop_server (
     stream_type: StreamType
 ) -> io::Result<()> {
 
-    let local_addr_str = "127.0.0.1:0";
+    let my_local_ip = local_ip().unwrap();
+    let local_addr_str = my_local_ip.to_string();
 
-    let socket = UdpSocket::bind(local_addr_str).await?;
+    let socket = UdpSocket::bind(local_addr_str + ":0").await?;
     let socket = Arc::new(socket);
 
     let peer_manager = Arc::new(PeerManager::new(socket.local_addr()?));

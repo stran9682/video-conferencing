@@ -340,7 +340,7 @@ pub async fn rtp_frame_receiver(
 
          */
 
-        let arrival_time = (duration_since.as_millis() * media_clock_rate as u128) / 1000;
+        let arrival_time = duration_since.as_millis() * (media_clock_rate as u128 / 1000);
 
         let mut data = BytesMut::with_capacity(bytes_read);
         data.put_slice(&buffer[..bytes_read]);

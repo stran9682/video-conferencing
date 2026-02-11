@@ -2,6 +2,8 @@ use std::{collections::VecDeque, net::SocketAddr, u128::MAX};
 use bytes::Bytes;
 use dashmap::DashMap;
 
+static WINDOW_SIZE: usize = 50;
+
 pub struct PlayoutBufferNode {
     pub arrival_time : u128,
     pub rtp_timestamp : u32,
@@ -26,7 +28,7 @@ impl Peer {
 
         self.window.push_front(difference);
 
-        if self.window.len() > 10 {
+        if self.window.len() > WINDOW_SIZE {
             self.window.pop_back();
         }
 
