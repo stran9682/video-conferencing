@@ -340,6 +340,7 @@ pub async fn rtp_frame_receiver(
 
          */
 
+        // M = T * R + offset
         let arrival_time = duration_since.as_millis() * (media_clock_rate as u128 / 1000);
 
         let mut data = BytesMut::with_capacity(bytes_read);
@@ -347,10 +348,13 @@ pub async fn rtp_frame_receiver(
 
         let header = RTPHeader::deserialize(&mut data);
 
+        // d(n) = Arrival Time of Packet - Header Timestamp
         let difference = arrival_time - header.timestamp as u128;
 
+        // offset = Min(d(n-w)...d(n))
         let offset = peer_manager.peer_get_min_window(addr, difference);
 
+        // base playout time = Timestamp + offset
         let base_playout_time = header.timestamp as u128 + offset;
 
         let node = PlayoutBufferNode {
@@ -360,10 +364,7 @@ pub async fn rtp_frame_receiver(
             coded_data : Vec::new()
         };
 
-        let fragment = Fragment {
-            sequence_num: header.sequence_number,
-            data: data.freeze()
-        };
+        let fragment = Fragment::new(header.sequence_number, data.freeze());
 
         peer_manager.add_playout_node_to_peer(addr, node, fragment);
 

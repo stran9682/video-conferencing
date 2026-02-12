@@ -84,6 +84,7 @@ async fn network_loop_server (
 
     let my_local_ip = local_ip().unwrap();
     let local_addr_str = my_local_ip.to_string();
+    println!("{local_addr_str}");
 
     let socket = UdpSocket::bind(local_addr_str + ":0").await?;
     let socket = Arc::new(socket);

@@ -2,6 +2,7 @@ use core::slice;
 use std::{collections::HashSet, net::SocketAddr, sync::{Arc, OnceLock}};
 use bytes::{BufMut, Bytes, BytesMut};
 use dashmap::DashSet;
+use local_ip_address::local_ip;
 use tokio::{io::{self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream }, sync::{Mutex, OnceCell}};
 
 use crate::{interop::{StreamType, runtime}, session_management::peer_manager::PeerManager};
@@ -135,7 +136,8 @@ pub extern "C" fn rust_send_h264_config (
 
 async fn listener() -> &'static TcpListener {
     LISTENER.get_or_init(|| async {
-        TcpListener::bind("0.0.0.0:0").await.unwrap()
+        let local_ip = local_ip().unwrap();
+        TcpListener::bind(local_ip.to_string() + ":0").await.unwrap()
     }).await
 }
 

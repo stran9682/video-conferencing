@@ -103,7 +103,7 @@ public func swift_receive_frame(
 ) {
     guard let context = context, let frameData = frameData else { return }
     
-    auditNALU(data: frameData, length: Int(frameDataLength))
+//    auditNALU(data: frameData, length: Int(frameDataLength))
     
     let peerVideoModel = Unmanaged<PeerVideoModel>.fromOpaque(context).takeUnretainedValue()
     
