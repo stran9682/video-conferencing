@@ -21,33 +21,18 @@ class CameraManager: NSObject {
     private var deviceInput : AVCaptureDeviceInput?
     
     //  object used to have access to video frames for processing
-    private var videoOutput: AVCaptureVideoDataOutput? /// these lowkey aren't used but i'm keeping them here
+    private var videoOutput: AVCaptureVideoDataOutput?
+    private var audioOutput: AVCaptureAudioDataOutput?
     
     //  object that represents the hardware or virtual capture device
     //  that can provide one or more streams of media of a particular type
     private let systemPreferedCamera = AVCaptureDevice.default(for: .video)
+    private let systemPreferedAudio = AVCaptureDevice.default(for: .audio)
     
     //  the queue on which the AVCaptureVideoDataOutputSampleBufferDelegate callbacks should be invoked.
     //  It is mandatory to use a serial dispatch queue to guarantee that video frames will be delivered in order
     private var sessionQueue = DispatchQueue(label: "video.preview.session")
-    
-    // Checks if the application has access to the camera
-    private var isAuthorized: Bool {
-        get async {
-            let status = AVCaptureDevice.authorizationStatus(for: .video)
-            
-            // Determine if the user previously authorized camera access.
-            var isAuthorized = status == .authorized
-            
-            // If the system hasn't determined the user's authorization status,
-            // explicitly prompt them for approval.
-            if status == .notDetermined {
-                isAuthorized = await AVCaptureDevice.requestAccess(for: .video)
-            }
-            
-            return isAuthorized
-        }
-    }
+    private var audioSessionQueue = DispatchQueue(label: "audio.preview.session")
     
     private var addToPreviewStream: ((CGImage) -> Void)?
     
@@ -81,9 +66,12 @@ class CameraManager: NSObject {
         // Check user authorization,
         // if the selected camera is available,
         // and if can take the input through the AVCaptureDeviceInput object
-        guard await isAuthorized,
+        guard await requestAccess(type: .video),
+              await requestAccess(type: .audio),
               let systemPreferedCamera,
-              let deviceInput = try? AVCaptureDeviceInput(device: systemPreferedCamera)
+              let deviceInput = try? AVCaptureDeviceInput(device: systemPreferedCamera),
+              let systemPreferedAudio,
+              let deviceMic = try? AVCaptureDeviceInput(device: systemPreferedAudio)
         else { return }
               
         // Start the configuration,
@@ -96,11 +84,13 @@ class CameraManager: NSObject {
             self.captureSession.commitConfiguration()
         }
         
+        // MARK: video config setup
+        
         // Define the video output
-        let videoOutput = AVCaptureVideoDataOutput()
+        videoOutput = AVCaptureVideoDataOutput()
         
         // set the Sample Buffer Delegate and the queue for invoking callbacks
-        videoOutput.setSampleBufferDelegate(self, queue: sessionQueue)
+        videoOutput!.setSampleBufferDelegate(self, queue: sessionQueue)
         
         // Check if the input can be added to the capture session
         guard captureSession.canAddInput(deviceInput) else {
@@ -109,30 +99,73 @@ class CameraManager: NSObject {
         }
 
         // Checking if the output can be added to the session
-        guard captureSession.canAddOutput(videoOutput) else {
+        guard captureSession.canAddOutput(videoOutput!) else {
             print("Unable to add video output to capture session.")
+            return
+        }
+        
+        
+        // MARK: Audio Config Setup
+        
+        audioOutput = AVCaptureAudioDataOutput()
+        audioOutput!.setSampleBufferDelegate(self, queue: audioSessionQueue)
+        
+        guard captureSession.canAddInput(deviceMic) else {
+            print("Unable to add device input to capture session.")
+            return
+        }
+        
+        guard captureSession.canAddOutput(audioOutput!) else {
+            print("Unable to add audio output to capture session.")
             return
         }
         
         // Adds the input and the output to the AVCaptureSession
         captureSession.addInput(deviceInput)
-        captureSession.addOutput(videoOutput)
+        captureSession.addOutput(videoOutput!)
+        captureSession.addInput(deviceMic)
+        captureSession.addOutput(audioOutput!)
     }
     
     //  will only be responsible for starting the camera session.
     private func startSession() async {
-        guard await isAuthorized else { return }
-        
         captureSession.startRunning()
+    }
+    
+    private func requestAccess(type : AVMediaType) async -> Bool {
+        
+        // Determine if the user previously authorized media access.
+        let status = AVCaptureDevice.authorizationStatus(for: type)
+        
+        // If the system hasn't determined the user's authorization status,
+        // explicitly prompt them for approval.
+        var isAuthorized = status == .authorized
+        
+        if status == .notDetermined {
+            isAuthorized = await AVCaptureDevice.requestAccess(for: type)
+        }
+        
+        return isAuthorized
     }
 }
 
-extension CameraManager : AVCaptureVideoDataOutputSampleBufferDelegate { // honestly what
+extension CameraManager : AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate  { // honestly what
     
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         
+        if output == self.videoOutput! {
+            handleFrame(sampleBuffer: sampleBuffer)
+        }
+        
+        if output == self.audioOutput! {
+            // TODO: Stuff here of course
+        }
+        
+    }
+    
+    func handleFrame(sampleBuffer: CMSampleBuffer) {
         guard let currentFrame = sampleBuffer.cgImage else { return }
         
         addToPreviewStream?(currentFrame)
