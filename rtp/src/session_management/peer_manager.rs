@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, net::SocketAddr, u128::MAX};
+use std::{collections::VecDeque, net::SocketAddr};
 use bytes::Bytes;
 use dashmap::DashMap;
 
@@ -6,9 +6,8 @@ static WINDOW_SIZE: usize = 50;
 static MAX_DROPOUT: u16 = 3000;
 
 pub struct PlayoutBufferNode {
-    pub arrival_time : u128,
     pub rtp_timestamp : u32,
-    pub playout_time : u128, 
+    pub playout_time : u32, 
     pub coded_data : Vec<Fragment>
 }
 
@@ -32,8 +31,8 @@ pub struct Peer {
     max_sequence_number: Option<u16>,
     wrap_around_count: u32,
     swift_peer_model: *mut std::ffi::c_void,
-    window : VecDeque<u128>,
-    min_window : u128,
+    window : VecDeque<u32>,
+    min_window : u32,
     playout_buffer : Vec<PlayoutBufferNode>
 }
 
@@ -44,13 +43,13 @@ impl Peer {
             wrap_around_count: 0,
             max_sequence_number: None,
             window: VecDeque::new(),
-            min_window: MAX,
+            min_window: u32::MAX,
             playout_buffer: Vec::new(),
             swift_peer_model
         }
     }
 
-    pub fn set_and_get_min_window (&mut self, difference : u128) -> u128{
+    pub fn set_and_get_min_window (&mut self, difference : u32) -> u32{
 
         self.window.push_front(difference);
 
@@ -58,14 +57,15 @@ impl Peer {
             self.window.pop_back();
         }
 
-        if let Some(&min_val) = self.window.iter().min() {
-            self.min_window = min_val;
-        }
+        let min = self.window.iter().fold(0, |min, val| {
+            if val.wrapping_sub(min) & 0x80000000 != 0 {
+                *val
+            } else {
+                min
+            }
+        });
 
-        self.min_window = match self.window.iter().min() {
-            Some(val) => *val,
-            None => difference
-        };
+        self.min_window = min;
 
         return self.min_window
     }
@@ -110,7 +110,7 @@ impl PeerManager {
         }
     }
 
-    pub fn peer_get_min_window(&self, addr: SocketAddr, difference: u128) -> u128 {
+    pub fn peer_get_min_window(&self, addr: SocketAddr, difference: u32) -> u32 {
         let peers = &self.peers;
 
         if let Some(mut found_peer) = peers.get_mut(&addr) {

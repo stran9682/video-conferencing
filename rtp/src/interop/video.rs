@@ -1,5 +1,6 @@
+use std::net::SocketAddr;
 use std::{io, sync::Arc};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{net::UdpSocket, sync::mpsc};
@@ -11,6 +12,7 @@ use crate::{packets::rtp::RTPSession, session_management::peer_manager::PeerMana
 //static FRAME_OUTPUT: OnceLock<Arc<PeerManager>> = OnceLock::new();
 
 const AVCC_HEADER_LENGTH: usize = 4;
+const  SKEW_THRESHOLD: i32 = 400;
 
 unsafe extern "C" {
     fn swift_receive_frame (
@@ -307,6 +309,7 @@ pub async fn rtp_frame_receiver(
 ) -> io::Result<()> {
 
     let mut buffer = [0u8; 1500];
+    let mut delay_calculator = DelayCalculator::new();
 
     // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
     
@@ -330,46 +333,17 @@ pub async fn rtp_frame_receiver(
             }
         };
 
-        /*
-            Calculating Base Playout time:
+        let play_out_time = delay_calculator.calculate_playout_time(
+            &peer_manager, 
+            duration_since, 
+            media_clock_rate, 
+            &buffer[..bytes_read],
+            addr
+        );
 
-            M = T * R + offset
-            d(n) = Arrival Time of Packet - Header Timestamp
-            offset = Min(d(n-w)...d(n))
-            base playout time = Timestamp + offset
-
-         */
-
-        // M = T * R + offset
-        let arrival_time = duration_since.as_millis() * (media_clock_rate as u128 / 1000);
-
-        let mut data = BytesMut::with_capacity(bytes_read);
-        data.put_slice(&buffer[..bytes_read]);
-
-        let header = RTPHeader::deserialize(&mut data);
-
-        // d(n) = Arrival Time of Packet - Header Timestamp
-        let difference = arrival_time - header.timestamp as u128;
-
-        // offset = Min(d(n-w)...d(n))
-        let offset = peer_manager.peer_get_min_window(addr, difference);
-
-        // base playout time = Timestamp + offset
-        let base_playout_time = header.timestamp as u128 + offset;
-
-        let node = PlayoutBufferNode {
-            arrival_time,
-            rtp_timestamp : header.timestamp,
-            playout_time : base_playout_time,
-            coded_data : Vec::new()
-        };
-
-        let fragment = Fragment::new(header.sequence_number, data.freeze());
-
-        peer_manager.add_playout_node_to_peer(addr, node, fragment);
 
         // Send to swift
-        if header.marker {
+        if let Some(play_out_time) = play_out_time {
             let Some(frame) = peer_manager.pop_node(addr) else {
                 continue;
             };
@@ -398,3 +372,104 @@ pub async fn rtp_frame_receiver(
 
     }
 }
+
+struct DelayCalculator {
+    active_delay: u32,
+    delay_estimate: u32,
+    first_time: bool,
+}
+
+impl DelayCalculator {
+    fn new () -> Self {
+        Self { active_delay: 0, delay_estimate: 0, first_time: true }
+    }
+
+    fn calculate_playout_time (
+        &mut self,
+        peer_manager: &Arc<PeerManager>, 
+        arrival_time: Duration, 
+        media_clock_rate: u32,
+        buffer: &[u8],
+        addr: SocketAddr
+    ) -> Option<u32> {
+
+        let mut data = BytesMut::with_capacity(buffer.len());
+        data.put_slice(buffer);
+
+        let header = RTPHeader::deserialize(&mut data); 
+
+        /*
+            Calculating Base Playout time:
+
+            M = T * R + offset
+            d(n) = Arrival Time of Packet - Header Timestamp
+            offset = Min(d(n-w)...d(n))
+            base playout time = Timestamp + offset
+        */
+
+        // M = T * R + offset
+        // don't worry that we're cutting off the bits
+        // the method described in Perkin's book uses modulo arithmetic
+        let arrival_time = arrival_time.as_millis() as u32 * (media_clock_rate / 1000);
+
+
+        // d(n) = Arrival Time of Packet - Header Timestamp
+        let difference = arrival_time.wrapping_sub(header.timestamp);
+
+        // offset = Min(d(n-w)...d(n))
+        // in the case when arrival time is smaller than timestamp.
+        // wraparound comparison is handled here.
+        let offset = peer_manager.peer_get_min_window(addr, difference);
+
+        // base playout time = Timestamp + offset
+        let base_playout_time = header.timestamp.wrapping_add(offset);
+
+        let node = PlayoutBufferNode {
+            rtp_timestamp : header.timestamp,
+            playout_time : base_playout_time,
+            coded_data : Vec::new()
+        };
+
+        let fragment = Fragment::new(header.sequence_number, data.freeze());
+
+        peer_manager.add_playout_node_to_peer(addr, node, fragment);
+
+        let adjustment = self.adjust_skew(difference);
+
+        if header.marker {
+            Some(base_playout_time)
+        } else {
+            None
+        }
+       
+    }
+
+    fn adjust_skew (&mut self, difference: u32) -> i32 {
+        let mut adjustment: i32 = 0;
+        
+        if self.first_time {
+            self.first_time = false;
+            self.delay_estimate = difference;
+            self.active_delay = difference;
+        } else {
+            self.delay_estimate = (31 * self.delay_estimate + difference) / 32;
+        }
+
+        let res= self.active_delay.wrapping_sub(self.delay_estimate) as i32 ;
+
+        if res > SKEW_THRESHOLD {
+            adjustment = SKEW_THRESHOLD;
+            self.active_delay = self.delay_estimate;
+        }
+
+        if res < -SKEW_THRESHOLD {
+            adjustment = -SKEW_THRESHOLD;
+            self.active_delay = self.delay_estimate;
+        }
+
+        adjustment
+    }
+}
+
+
+

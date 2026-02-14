@@ -19,10 +19,6 @@ class PeerVideoManager {
         Array(peers.values)
     }
     
-    init() {
-        
-    }
-    
     func addPeer(peerView : PeerView, address: String) {
         
         DispatchQueue.main.async {
