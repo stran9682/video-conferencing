@@ -7,7 +7,8 @@
 
 import SwiftUI
 
-struct PeerView: View {
+struct PeerView: View, Identifiable {
+    var id = UUID()
     @State private var peerVideoModel : PeerVideoModel
     
     init(peerVideoModel: PeerVideoModel) {

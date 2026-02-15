@@ -34,10 +34,5 @@ struct ContentView: View {
                 peer
             }
         }
-//        
-//        
-//        List(peerVideoManager.allPeers) { peer in
-//            peer
-//        }
     }
 }

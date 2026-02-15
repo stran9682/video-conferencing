@@ -51,8 +51,8 @@ class CameraManager: NSObject {
         
         compressionSession = CompressionManager()
         
-        run_runtime_server(StreamType(1))    /// our rust code!
-        //run_runtime_server(true, StreamType(0), nil, 0)
+        run_runtime_server(StreamType(1))
+        //run_runtime_server(StreamType(0))
         
         Task {
             await configureSession()

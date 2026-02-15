@@ -155,8 +155,7 @@ pub async fn run_signaling_server (
     };
 
     // return early. Do NOT run another instance of the server!
-    if res.is_err() || 
-        (!AUDIO_PEERS.get().is_none() && !FRAME_PEERS.get().is_none()) {
+    if res.is_err() {
         return Ok(()); 
     }
 

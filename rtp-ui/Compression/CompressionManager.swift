@@ -94,7 +94,6 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
         createIfNecessary: false
     ) else { return }
     
-    // this becomes a really redundant check. Only works once every time h264 parameters change!
     if (CFArrayGetCount(attachmentsArray) > 0) {
     
         let cfDict = CFArrayGetValueAtIndex(attachmentsArray, 0)
