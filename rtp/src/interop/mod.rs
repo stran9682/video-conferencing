@@ -89,7 +89,8 @@ async fn network_loop_server (
     let socket = UdpSocket::bind(local_addr_str + ":0").await?;
     let socket = Arc::new(socket);
 
-    let peer_manager = Arc::new(PeerManager::new(socket.local_addr()?));
+    // TOOD create a random SSRC, this will fail when there's more than two people.
+    let peer_manager = Arc::new(PeerManager::new(socket.local_addr()?, 1));
 
     let peer_manager_clone = Arc::clone(&peer_manager);        
     runtime().spawn(async move {

@@ -211,12 +211,6 @@ async fn handle_signaling_client (
    Ok(()) 
 }
 
-/// How the client first establishes contact with peers
-/// 
-/// Given a signalling address, client will connect to it and gather the following from every peer:
-/// - Addresses where media should be sent
-/// - The SSRCs associated with an incoming stream
-/// - Any infromation needed for client to setup a stream (decoding paramters for instance)
 pub async fn connect_to_signaling_server(
     server_addr: Option<String>,
     media_type : &str
@@ -234,14 +228,14 @@ pub async fn connect_to_signaling_server(
     //  You'll only get their data! This is to make sure you connect to everyone
     //  addresses will be stored in vector
     let mut addresses: Vec<String> = Vec::new();
-    add_peers(&peer_manager, &server_addr, &packet, &mut addresses).await?;
+    add_peers(media_type, &server_addr, &packet, &mut addresses).await?;
 
     //  now, just loop through the addresses and get their data. 
     //  The addresses are redundant since you got them already
     //  hence the empty vector
     for signaling_addr in &addresses {
         // throwaway vector lol. don't do this.
-        if let Err(e) = add_peers(&peer_manager, signaling_addr, &packet, &mut Vec::with_capacity(addresses.len())).await {
+        if let Err(e) = add_peers(media_type, signaling_addr, &packet, &mut Vec::with_capacity(addresses.len())).await {
             eprint!("Error! : {}", e);
             continue;
         }
@@ -269,17 +263,13 @@ async fn add_peers (
 
     let data = Bytes::copy_from_slice(&buffer[..bytes_read]);   
 
-    // some data can't be converted to a string, so we'll just seperate them by \r\n
-    // and convert when we need it
     let data: Vec<&[u8]> = data
         .split(|b| b == &0xA)
         .map(|line| line.strip_suffix(&[0xD])
         .unwrap_or(line))
         .collect();
 
-    handle_request(data, media_type)
-
-    peer_manager.add_peer(ssrc, media_addr, swift_peer_model);
+    handle_request(&data, media_type).await?;
 
     let signaling_addr: SocketAddr = signaling_addr
         .parse()
@@ -309,16 +299,22 @@ async fn write_response(media_type : &str) -> io::Result<BytesMut> {
         return Err(io::Error::new(io::ErrorKind::NotFound, "Peer manager not initialized"));
     };
 
+    let Ok(signaling_addr) = listener().await.local_addr() else {
+        return Err(io::Error::new(io::ErrorKind::Interrupted, "Failed to get signaling address"));
+    };
+
     // writing the response
     let mut response = BytesMut::new();
 
     let header = format!(
         "{}\r\n{}\r\n{}\r\n", 
         media_type, // 0
+        signaling_addr.to_string(),
         peer_manager.local_addr, // 1
-        peer_manager.local_ssrc // 2
     );
     response.put(header.as_bytes());
+    response.put_u32(peer_manager.local_ssrc);
+    response.put_slice(b"\r\n");
 
     let Some(specifications) = PEER_SPECIFICATIONS.get() else {
         return Err(io::Error::new(io::ErrorKind::NotFound, "Specification manager not initialized"));

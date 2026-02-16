@@ -112,9 +112,9 @@ impl PeerManager {
     ) -> bool {
         let peers = &self.peers;
       
-        if  !peers.contains_key(&ssrc) && addr != self.local_addr {
+        if  !peers.contains_key(&ssrc) {
             peers.insert(ssrc, Peer::new(swift_peer_model));
-
+            self.peer_addresses.insert(ssrc, addr);
             true
         } else {
             false
