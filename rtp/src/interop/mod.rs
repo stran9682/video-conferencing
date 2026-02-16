@@ -102,6 +102,9 @@ async fn network_loop_server (
     let sender_socket = Arc::clone(&socket);
     let sender_peers = Arc::clone(&peer_manager);
     
+    // TODO: create a rtcp sender and receiver
+
+
     match stream_type {
         StreamType::Video => {
             let (tx, rx) = mpsc::channel::<EncodedFrame>(CHANNEL_BUFFER_SIZE);
