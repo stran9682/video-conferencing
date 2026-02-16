@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{net::UdpSocket, sync::mpsc};
 
+use crate::packets::rtp::RTPHeader;
 use crate::session_management::delay_calculator::DelayCalculator;
 use crate::{packets::rtp::RTPSession, session_management::peer_manager::PeerManager};
 
@@ -330,18 +331,28 @@ pub async fn rtp_frame_receiver(
             }
         };
 
+        let mut data = BytesMut::with_capacity(bytes_read);
+        data.put_slice(&buffer[..bytes_read]);
+
+        let header = RTPHeader::deserialize(&mut data); 
+
+        // TODO: 
+        // if RTP SSRC has been sent with a new address, 
+        // update it so the frame sender can be send it to updated address
+        // though signalling may have handled it first, just redundancy
+
         let play_out_time = delay_calculator.calculate_playout_time(
             &peer_manager, 
             duration_since, 
             media_clock_rate, 
-            &buffer[..bytes_read],
-            addr
+            data,
+            &header
         );
 
 
         // Send to swift
         if let Some(play_out_time) = play_out_time {
-            let Some(frame) = peer_manager.pop_node(addr) else {
+            let Some(frame) = peer_manager.pop_node(header.ssrc) else {
                 continue;
             };
 
@@ -350,10 +361,8 @@ pub async fn rtp_frame_receiver(
             let mut frame_data = rtp_to_avcc_h264(frame_bytes);
             let frame_data_length = frame_data.len();
 
-            //println!("{:?}", &frame_data[0..4]);
-
-            let Some(context) = peer_manager.get_context(addr) else {
-                continue;
+            let Some(context) = peer_manager.get_context(header.ssrc) else {
+                continue;  // in case that the UI hasn't sent back the pointer to stream, just ignore
             };
 
             unsafe {

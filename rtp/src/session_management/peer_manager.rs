@@ -76,33 +76,44 @@ unsafe impl Send for Peer { }
 unsafe impl Sync for Peer { }
 
 pub struct PeerManager {
-    peers: DashMap<SocketAddr, Peer>,
+    peers: DashMap<u32, Peer>,
+
+    // to help take the load off of peers. 
+    // sending thread can just use this instead, 
+    // instead of blocking the receiving
+    peer_addresses: DashMap<u32, SocketAddr>, 
+
     pub local_addr: SocketAddr,
+    pub local_ssrc: u32
 }
 
 impl PeerManager {
-    pub fn new(local_addr: SocketAddr) -> Self {
+    pub fn new(local_addr: SocketAddr, local_ssrc: u32) -> Self {
         Self {
             peers: DashMap::new(),
+            peer_addresses: DashMap::new(),
             local_addr,
+            local_ssrc
         }
     }
 
-    pub fn get_context(&self, addr: SocketAddr) -> Option<*mut std::ffi::c_void>{
-        if  self.peers.contains_key(&addr)  {
-            let peer = self.peers.get(&addr);
-
-            Some(peer.unwrap().swift_peer_model)
+    pub fn get_context(&self, ssrc: u32) -> Option<*mut std::ffi::c_void>{
+        if let Some(peer) = self.peers.get(&ssrc) {
+            Some(peer.swift_peer_model)
         } else {
             None
         }
     }
 
-    pub fn add_peer(&self, addr: SocketAddr, swift_peer_model: *mut std::ffi::c_void) -> bool {
+    pub fn add_peer(&self, 
+        ssrc: u32,
+        addr: SocketAddr, 
+        swift_peer_model: *mut std::ffi::c_void
+    ) -> bool {
         let peers = &self.peers;
       
-        if  !peers.contains_key(&addr) && addr != self.local_addr {
-            peers.insert(addr, Peer::new(swift_peer_model));
+        if  !peers.contains_key(&ssrc) && addr != self.local_addr {
+            peers.insert(ssrc, Peer::new(swift_peer_model));
 
             true
         } else {
@@ -110,29 +121,22 @@ impl PeerManager {
         }
     }
 
-    pub fn peer_get_min_window(&self, addr: SocketAddr, difference: u32) -> u32 {
+    pub fn peer_get_min_window(&self, ssrc: u32, difference: u32) -> Option<u32> {
         let peers = &self.peers;
 
-        if let Some(mut found_peer) = peers.get_mut(&addr) {
-            found_peer.set_and_get_min_window(difference)
+        if let Some(mut found_peer) = peers.get_mut(&ssrc) {
+            Some(found_peer.set_and_get_min_window(difference))
         } else {
-            // peers.insert(addr, Peer{
-            //     window: VecDeque::new(),
-            //     min_window: difference,
-            //     playout_buffer: Vec::new()
-            // });
-
-            difference
+            None
         }
     }
 
-    pub fn add_playout_node_to_peer(&self, addr: SocketAddr, mut playout_buffer_node : PlayoutBufferNode, mut fragment: Fragment){
+    pub fn add_playout_node_to_peer(&self, ssrc: u32, mut playout_buffer_node : PlayoutBufferNode, mut fragment: Fragment) {
         let peers = &self.peers;
 
-        let Some(mut peer) = peers.get_mut(&addr) else {
+        let Some(mut peer) = peers.get_mut(&ssrc) else {
             return
         };
-
 
         // accounting for wraparound
         if let Some(max_sequence_number) = peer.max_sequence_number {
@@ -181,11 +185,11 @@ impl PeerManager {
     }
 
     pub fn get_peers(&self) -> Vec<SocketAddr> {
-        self.peers.iter().map(|entry| entry.key().clone()).collect()
+        self.peer_addresses.iter().map(|entry| entry.value().clone()).collect()
     }
 
-    pub fn pop_node(&self, addr: SocketAddr) -> Option<PlayoutBufferNode> {
-        let mut peer = self.peers.get_mut(&addr)?;
+    pub fn pop_node(&self, ssrc: u32) -> Option<PlayoutBufferNode> {
+        let mut peer = self.peers.get_mut(&ssrc)?;
 
         let Some(node) = peer.playout_buffer.pop() else {
             return  None;

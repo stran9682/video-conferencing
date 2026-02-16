@@ -41,24 +41,24 @@ pub struct H264Args{
 }
 
 pub struct PeerSpecifications {
-    peer_signaling_address : DashSet<SocketAddr>,
+    peer_signaling_addresses : DashSet<SocketAddr>,
     self_h264_args : Mutex<H264Args>
 }
 
 impl PeerSpecifications {
     pub fn new (h264_args: H264Args) -> Self {
         Self {
-            peer_signaling_address : DashSet::new(),
+            peer_signaling_addresses : DashSet::new(),
             self_h264_args: Mutex::new(h264_args)
         }
     }
 
     pub fn get_peers(&self) -> HashSet<SocketAddr> {
-        self.peer_signaling_address.iter().map(|addr| addr.clone()).collect()
+        self.peer_signaling_addresses.iter().map(|addr| addr.clone()).collect()
     }
 
     pub fn add_peer(&self, addr: SocketAddr) {
-        self.peer_signaling_address.insert(addr);
+        self.peer_signaling_addresses.insert(addr);
     }
 }
 
@@ -121,14 +121,8 @@ pub extern "C" fn rust_send_h264_config (
         None => None
     };
 
-    let Some(frame_peers) = FRAME_PEERS.get() else {
-        eprintln!("Frame peer manager not set yet, have you called run_runtime_server first?");
-        return;
-    };
-
-    let frame_peer_clone = Arc::clone(&frame_peers);
     runtime().spawn(async move {
-        if let Err(e) = connect_to_signaling_server(host_addr_str, frame_peer_clone, StreamType::Video).await {
+        if let Err(e) = connect_to_signaling_server(host_addr_str, "video").await {
             eprintln!("Failed to connect to signaling server, {}", e)
         }
     });
@@ -194,6 +188,7 @@ async fn handle_signaling_client (
         return Ok(());
     }
 
+    // splitting the request
     let data = Bytes::copy_from_slice(&buffer[..bytes_read]);
 
     let request: Vec<&[u8]> = data
@@ -202,10 +197,108 @@ async fn handle_signaling_client (
         .unwrap_or(line))
         .collect();
 
+    // get media type, should be thee first one item
     let Ok(media_type) = str::from_utf8(request[0]) else {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "Unable to parse media type"));
     };
 
+    let response = write_response(media_type).await?;
+
+    socket.write_all(&response).await?;
+
+    handle_request(&request, media_type).await?;
+
+   Ok(()) 
+}
+
+/// How the client first establishes contact with peers
+/// 
+/// Given a signalling address, client will connect to it and gather the following from every peer:
+/// - Addresses where media should be sent
+/// - The SSRCs associated with an incoming stream
+/// - Any infromation needed for client to setup a stream (decoding paramters for instance)
+pub async fn connect_to_signaling_server(
+    server_addr: Option<String>,
+    media_type : &str
+) -> io::Result<()> {
+
+    // this is the case when you're the first person. 
+    // You don't have anyone to connect to
+    let Some(server_addr) = server_addr else {
+        return Ok(());
+    };
+
+    let packet = write_response(media_type).await?;
+
+    //  this is silly, but connect to the first person and get their data and everyone's signalling address
+    //  You'll only get their data! This is to make sure you connect to everyone
+    //  addresses will be stored in vector
+    let mut addresses: Vec<String> = Vec::new();
+    add_peers(&peer_manager, &server_addr, &packet, &mut addresses).await?;
+
+    //  now, just loop through the addresses and get their data. 
+    //  The addresses are redundant since you got them already
+    //  hence the empty vector
+    for signaling_addr in &addresses {
+        // throwaway vector lol. don't do this.
+        if let Err(e) = add_peers(&peer_manager, signaling_addr, &packet, &mut Vec::with_capacity(addresses.len())).await {
+            eprint!("Error! : {}", e);
+            continue;
+        }
+    }
+
+    Ok(())
+}
+
+async fn add_peers (
+    media_type : &str,
+    signaling_addr: &str, 
+    packet: &BytesMut, 
+    addresses: &mut Vec<String>
+) -> io::Result<()> {
+    let mut buffer = [0u8; BUFFER_SIZE];
+    let mut socket = TcpStream::connect(signaling_addr).await?;
+    
+    socket.write_all(&packet).await?;
+    
+    let bytes_read = socket.read(&mut buffer).await?;
+
+    if bytes_read == 0 {
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "No response from server"));
+    }
+
+    let data = Bytes::copy_from_slice(&buffer[..bytes_read]);   
+
+    // some data can't be converted to a string, so we'll just seperate them by \r\n
+    // and convert when we need it
+    let data: Vec<&[u8]> = data
+        .split(|b| b == &0xA)
+        .map(|line| line.strip_suffix(&[0xD])
+        .unwrap_or(line))
+        .collect();
+
+    handle_request(data, media_type)
+
+    peer_manager.add_peer(ssrc, media_addr, swift_peer_model);
+
+    let signaling_addr: SocketAddr = signaling_addr
+        .parse()
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    PEER_SPECIFICATIONS.get().unwrap().add_peer(signaling_addr);
+
+    for response in &data[5..] {
+        let Ok(str) = str::from_utf8(response) else {
+            continue;
+        };
+        
+        addresses.push(str.to_string());
+    }
+
+    Ok(())
+}
+
+async fn write_response(media_type : &str) -> io::Result<BytesMut> {
     let (stream_type, peer_manager) = match media_type {
         "video" => (StreamType::Video,  FRAME_PEERS.get()),
         "audio" => (StreamType::Audio, AUDIO_PEERS.get()),
@@ -216,9 +309,15 @@ async fn handle_signaling_client (
         return Err(io::Error::new(io::ErrorKind::NotFound, "Peer manager not initialized"));
     };
 
+    // writing the response
     let mut response = BytesMut::new();
 
-    let header = format!("{}\r\n{}\r\n", media_type, peer_manager.local_addr);
+    let header = format!(
+        "{}\r\n{}\r\n{}\r\n", 
+        media_type, // 0
+        peer_manager.local_addr, // 1
+        peer_manager.local_ssrc // 2
+    );
     response.put(header.as_bytes());
 
     let Some(specifications) = PEER_SPECIFICATIONS.get() else {
@@ -229,9 +328,9 @@ async fn handle_signaling_client (
 
     match stream_type {
         StreamType::Video => {        
-            response.put_slice(&h264_args.pps);
+            response.put_slice(&h264_args.pps); // 3
             response.put_slice(b"\r\n");
-            response.put_slice(&h264_args.sps);
+            response.put_slice(&h264_args.sps); // 4
             
             let signaling = specifications.get_peers();
             for addr in signaling {
@@ -244,7 +343,23 @@ async fn handle_signaling_client (
         }
     }
 
-    socket.write_all(&response).await?;
+    return Ok(response)
+}
+
+async fn handle_request(request: &Vec<&[u8]>, media_type : &str) -> io::Result<()> {
+    let (specifications, peer_manager) = match media_type {
+        "video" => (PEER_SPECIFICATIONS.get(),  FRAME_PEERS.get()),
+        "audio" => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.get()),
+        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "Not a valid type"))
+    };
+
+    let Some(peer_manager) = peer_manager else {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "Peer manager not initialized"));
+    };
+
+    let Some(specifications) = specifications else {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "Specification manager not initialized"));
+    };
 
     let signaling_addr: SocketAddr = str::from_utf8(request[1])
         .map_err(|e| io::Error::new(
@@ -267,137 +382,25 @@ async fn handle_signaling_client (
     let swift_peer_model = unsafe {
         swift_receive_pps_sps(
             context.context, 
-            request[3].as_ptr(), 
-            request[3].len(),
-            request[4].as_ptr(),
+            request[4].as_ptr(), 
             request[4].len(),
+            request[5].as_ptr(),
+            request[5].len(),
             media_addr.to_string().as_ptr()
         )
     };
 
-    peer_manager.add_peer(media_addr, swift_peer_model);
+    let ssrc = u32::from_be_bytes(request[3][..4]
+        .try_into().map_err(
+            |e| io::Error::new(
+                io::ErrorKind::InvalidData, 
+                format!("Somemone sent you a faulty u32 SSRC. {}", e)
+            )
+        )?
+    );
+
+    peer_manager.add_peer(ssrc, media_addr, swift_peer_model);
     specifications.add_peer(signaling_addr);
-
-   Ok(()) 
-}
-
-pub async fn connect_to_signaling_server(
-    server_addr: Option<String>,
-    peer_manager: Arc<PeerManager>,
-    stream_type : StreamType
-) -> io::Result<()> {
-
-    // this is the case when you're the first person. 
-    // You don't have anyone to connect to
-    let Some(server_addr) = server_addr else {
-        return Ok(());
-    };
-
-    let mut packet = BytesMut::new();
-
-    match stream_type {
-        StreamType::Audio => packet.put_slice(b"audio\r\n"),
-        StreamType::Video => packet.put_slice(b"video\r\n")
-    }
-
-    let Ok(signaling_addr) = listener().await.local_addr() else {
-        return Err(io::Error::new(io::ErrorKind::Interrupted, "Failed to get signaling address"));
-    };
-
-    packet.put(signaling_addr.to_string().as_bytes());
-    packet.put_slice(b"\r\n");
-    packet.put(peer_manager.local_addr.to_string().as_bytes());
-    packet.put_slice(b"\r\n");
-
-    let Some(peer_specs) = PEER_SPECIFICATIONS.get() else {
-        return Err(io::Error::new(
-            io::ErrorKind::Interrupted, 
-            "Peer Specifications object not intialized. Most likely missing PPS and SPS data")
-        );
-    };
-
-    match stream_type {
-        StreamType::Audio => {
-            // STILL WORKING ON IT!
-        }
-        StreamType::Video => {
-            let h264_args = peer_specs.self_h264_args.lock().await;
-
-            packet.put_slice(&h264_args.pps);
-            packet.put_slice(b"\r\n");
-            packet.put_slice(&h264_args.sps);
-        }
-    }
-
-    let mut addresses: Vec<String> = Vec::new();
-    add_peers(&peer_manager, &server_addr, &packet, &mut addresses).await?;
-
-    for signaling_addr in &addresses {
-        // throwaway vector lol. don't do this.
-        if let Err(e) = add_peers(&peer_manager, signaling_addr, &packet, &mut Vec::new()).await {
-            eprint!("Error! : {}", e);
-            continue;
-        }
-    }
-
-    Ok(())
-}
-
-async fn add_peers (peer_manager: &Arc<PeerManager>, signaling_addr: &str, packet: &BytesMut, addresses: &mut Vec<String>) -> io::Result<()> {
-    let mut buffer = [0u8; BUFFER_SIZE];
-    let mut socket = TcpStream::connect(signaling_addr).await?;
-    
-    socket.write_all(&packet).await?;
-    
-    let bytes_read = socket.read(&mut buffer).await?;
-
-    if bytes_read == 0 {
-        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "No response from server"));
-    }
-
-    let data = Bytes::copy_from_slice(&buffer[..bytes_read]);   
-
-    let data: Vec<&[u8]> = data
-        .split(|b| b == &0xA)
-        .map(|line| line.strip_suffix(&[0xD])
-        .unwrap_or(line))
-        .collect();
-
-    let media_addr: SocketAddr = str::from_utf8(data[1])
-        .map_err(|e| io::Error::new(
-            io::ErrorKind::AddrNotAvailable, 
-            format!("Failed to prase address, {}", e)))?
-        .parse()
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-    let context = PEER_VIDEO_CONTEXT.get().unwrap();
-
-    let swift_peer_model = unsafe { 
-        swift_receive_pps_sps(
-            context.context, 
-            data[2].as_ptr(), 
-            data[2].len(), 
-            data[3].as_ptr(), 
-            data[3].len(),
-            media_addr.to_string().as_ptr()
-        )
-    };
-
-    peer_manager.add_peer(media_addr, swift_peer_model);
-
-    let signaling_addr: SocketAddr = signaling_addr
-        .parse()
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-    PEER_SPECIFICATIONS.get().unwrap().add_peer(signaling_addr);
-
-    for response in &data[4..] {
-        let Ok(str) = str::from_utf8(response) else {
-            continue;
-        };
-        
-        addresses.push(str.to_string());
-    }
 
     Ok(())
 }

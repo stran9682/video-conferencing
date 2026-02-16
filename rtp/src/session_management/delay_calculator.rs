@@ -1,6 +1,6 @@
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 
 use crate::{packets::rtp::RTPHeader, session_management::peer_manager::{Fragment, PeerManager, PlayoutBufferNode}};
 
@@ -21,15 +21,11 @@ impl DelayCalculator {
         peer_manager: &Arc<PeerManager>, 
         arrival_time: Duration, 
         media_clock_rate: u32,
-        buffer: &[u8],
-        addr: SocketAddr
+        data: BytesMut,
+        rtp_header: &RTPHeader
     ) -> Option<u32> {
 
-        let mut data = BytesMut::with_capacity(buffer.len());
-        data.put_slice(buffer);
-
-        let header = RTPHeader::deserialize(&mut data); 
-
+       
         /*
             Calculating Base Playout time:
 
@@ -46,30 +42,30 @@ impl DelayCalculator {
 
 
         // d(n) = Arrival Time of Packet - Header Timestamp
-        let difference = arrival_time.wrapping_sub(header.timestamp);
+        let difference = arrival_time.wrapping_sub(rtp_header.timestamp);
 
         // offset = Min(d(n-w)...d(n))
         // in the case when arrival time is smaller than timestamp.
         // wraparound comparison is handled here.
-        let offset = peer_manager.peer_get_min_window(addr, difference);
+        let offset = peer_manager.peer_get_min_window(rtp_header.ssrc, difference)?;
 
         // base playout time = Timestamp + offset
-        let base_playout_time = header.timestamp.wrapping_add(offset);
+        let base_playout_time = rtp_header.timestamp.wrapping_add(offset);
 
         let node = PlayoutBufferNode {
-            rtp_timestamp : header.timestamp,
+            rtp_timestamp : rtp_header.timestamp,
             playout_time : base_playout_time,
             coded_data : Vec::new()
         };
 
-        let fragment = Fragment::new(header.sequence_number, data.freeze());
+        let fragment = Fragment::new(rtp_header.sequence_number, data.freeze());
 
-        peer_manager.add_playout_node_to_peer(addr, node, fragment);
+        peer_manager.add_playout_node_to_peer(rtp_header.ssrc, node, fragment);
 
         // TODO: Something with this!!
         let adjustment = self.adjust_skew(difference);
 
-        if header.marker {
+        if rtp_header.marker {
             Some(base_playout_time)
         } else {
             None

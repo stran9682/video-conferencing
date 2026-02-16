@@ -1,4 +1,9 @@
+use std::sync::Arc;
+
 use bytes::{Buf, BufMut, BytesMut};
+use tokio::{net::UdpSocket, sync::Mutex};
+
+use crate::{interop::runtime, packets::rtp::RTPSession, session_management::peer_manager::{PeerManager}};
 
 pub const RTP_VERSION: u8 = 2;
 pub const VERSION_SHIFT: u8 = 6;
@@ -93,3 +98,33 @@ impl RTCPHeader {
     }
 }
 
+pub async fn start_rtcp (
+    socket: UdpSocket, 
+    rtp_session: Arc<Mutex<RTPSession>>, 
+    peer_manager: Arc<PeerManager>
+) {
+    let socket = Arc::new(socket);
+
+    let socket_clone = Arc::clone(&socket);
+    let peer_manager_clone = Arc::clone(&peer_manager);
+    runtime().spawn(async move {
+        rtcp_sender(socket_clone, rtp_session, peer_manager_clone).await;
+    });
+
+    rtcp_receiver(socket, peer_manager).await;
+}
+
+async fn rtcp_sender (
+    socket: Arc<UdpSocket>, 
+    rtp_session: Arc<Mutex<RTPSession>>, 
+    peer_manager: Arc<PeerManager>
+) {
+
+}
+
+async fn rtcp_receiver (
+    socket: Arc<UdpSocket>, 
+    peer_manager: Arc<PeerManager>
+) {
+
+}
