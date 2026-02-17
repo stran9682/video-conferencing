@@ -1,24 +1,23 @@
-
-/* 
-    honestly, i've just stolen this from : 
+/*
+    honestly, i've just stolen this from :
     https://github.com/webrtc-rs/rtcp/blob/main/src/source_description/mod.rs
-*/ 
+*/
 
 use bytes::{self, Buf, BufMut, BytesMut};
 
 /*
-    *  0                   1                   2                   3
-    *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-    * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    * |V=2|P|X|  CC   |M|     PT      |       sequence number         |
-    * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    * |                           timestamp                           |
-    * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    * |           synchronization source (SSRC) identifier            |
-    * +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-    * |            contributing source (CSRC) identifiers             |
-    * |                             ....                              |
-    * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  0                   1                   2                   3
+ *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |V=2|P|X|  CC   |M|     PT      |       sequence number         |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |                           timestamp                           |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |           synchronization source (SSRC) identifier            |
+ * +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+ * |            contributing source (CSRC) identifiers             |
+ * |                             ....                              |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 
 pub struct RTPHeader {
@@ -42,7 +41,6 @@ pub struct RTPHeader {
 
 impl RTPHeader {
     pub fn serialize(&self) -> BytesMut {
-
         let mut buf = BytesMut::with_capacity(64);
 
         // first byte
@@ -55,7 +53,6 @@ impl RTPHeader {
             b0 |= 1 << 4;
         }
         buf.put_u8(b0);
-
 
         // second byte
         let mut b1 = self.payload_type;
@@ -78,10 +75,9 @@ impl RTPHeader {
         buf
     }
 
-
-    pub fn deserialize (packet: &mut BytesMut) -> RTPHeader {
+    pub fn deserialize(packet: &mut BytesMut) -> RTPHeader {
         let b0 = packet.get_u8();
-        let version = b0 >> 6 & 0x3; 
+        let version = b0 >> 6 & 0x3;
         let padding = (b0 >> 5 & 0x1) > 0;
         let extension = (b0 >> 4 & 0x1) > 0;
         // let cc = (b0 & 0xF) as usize;

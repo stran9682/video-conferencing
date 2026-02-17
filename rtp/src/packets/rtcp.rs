@@ -64,7 +64,6 @@ pub struct RTCPHeader {
 
 impl RTCPHeader {
     pub fn serialize(&self) -> BytesMut {
-
         // TODO: Adjust this number lol
         let mut buf = BytesMut::with_capacity(64);
 
@@ -75,7 +74,6 @@ impl RTCPHeader {
         buf.put_u8(b0);
         buf.put_u8(self.packet_type as u8);
         buf.put_u16(self.length);
-
 
         buf
     }
@@ -98,10 +96,7 @@ impl RTCPHeader {
     }
 }
 
-pub async fn start_rtcp (
-    socket: UdpSocket, 
-    peer_manager: Arc<PeerManager>
-) {
+pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>) {
     let socket = Arc::new(socket);
 
     let socket_clone = Arc::clone(&socket);
@@ -113,16 +108,6 @@ pub async fn start_rtcp (
     rtcp_receiver(socket, peer_manager).await;
 }
 
-async fn rtcp_sender (
-    socket: Arc<UdpSocket>, 
-    peer_manager: Arc<PeerManager>
-) {
+async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {}
 
-}
-
-async fn rtcp_receiver (
-    socket: Arc<UdpSocket>, 
-    peer_manager: Arc<PeerManager>
-) {
-
-}
+async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {}
