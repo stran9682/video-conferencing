@@ -125,6 +125,8 @@ pub extern "C" fn rust_send_h264_config (
         if let Err(e) = connect_to_signaling_server(host_addr_str, "video").await {
             eprintln!("Failed to connect to signaling server, {}", e)
         }
+
+        // TOOD: If the connection fails when you update your specs, try another peer
     });
 }
 
@@ -234,7 +236,6 @@ pub async fn connect_to_signaling_server(
     //  The addresses are redundant since you got them already
     //  hence the empty vector
     for signaling_addr in &addresses {
-        // throwaway vector lol. don't do this.
         if let Err(e) = add_peers(media_type, signaling_addr, &packet, &mut Vec::with_capacity(addresses.len())).await {
             eprint!("Error! : {}", e);
             continue;
@@ -310,10 +311,10 @@ async fn write_response(media_type : &str) -> io::Result<BytesMut> {
         "{}\r\n{}\r\n{}\r\n", 
         media_type, // 0
         signaling_addr.to_string(),
-        peer_manager.local_addr, // 1
+        peer_manager.local_addr(), // 1
     );
     response.put(header.as_bytes());
-    response.put_u32(peer_manager.local_ssrc);
+    response.put_u32(peer_manager.local_ssrc());
     response.put_slice(b"\r\n");
 
     let Some(specifications) = PEER_SPECIFICATIONS.get() else {
@@ -374,6 +375,9 @@ async fn handle_request(request: &Vec<&[u8]>, media_type : &str) -> io::Result<(
     let Some(context) = PEER_VIDEO_CONTEXT.get() else {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "Peer video manager likely not initialized"))
     };
+
+    // TOOO:    If the ip address & ssrc is the same, remove the old peer. 
+    //          then Update their specs
 
     let swift_peer_model = unsafe {
         swift_receive_pps_sps(

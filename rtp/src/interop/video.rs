@@ -4,9 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{net::UdpSocket, sync::mpsc};
 
+use crate::packets::RTPSession;
 use crate::packets::rtp::RTPHeader;
 use crate::session_management::delay_calculator::DelayCalculator;
-use crate::{packets::rtp::RTPSession, session_management::peer_manager::PeerManager};
+use crate::{ session_management::peer_manager::PeerManager};
 
 //static FRAME_OUTPUT: OnceLock<Arc<PeerManager>> = OnceLock::new();
 
@@ -43,14 +44,6 @@ pub async fn rtp_frame_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedFrame>
 ) {    
-
-    let mut rtp_session = RTPSession{
-        current_sequence_num: 0,
-        timestamp: 0,
-        increment: 3_000,
-        ssrc: 1
-    };
-
     loop {
 
         let frame = match rx.recv().await {
@@ -73,7 +66,11 @@ pub async fn rtp_frame_sender(
         let mut nal_units = nal_units.iter().peekable();
 
         while let Some(nal_unit) = nal_units.next() {
-            let fragments = get_fragments(nal_unit, &mut rtp_session, nal_units.peek().is_none());
+            let fragments = get_fragments(
+                nal_unit, 
+                &peer_manager.rtp_session,
+                nal_units.peek().is_none()
+            );
 
             for fragment in fragments {
 
@@ -86,13 +83,13 @@ pub async fn rtp_frame_sender(
             }
         }
 
-        rtp_session.next_packet(); // this will increment the timestamp by 3000. (90kHz / 30 fps)
+        peer_manager.rtp_session.next_packet(); // this will increment the timestamp by 3000. (90kHz / 30 fps)
     }
 }
 
 pub fn get_fragments(
     payload : &[u8], 
-    rtp_session : &mut RTPSession, 
+    rtp_session : &RTPSession, 
     is_last_unit: bool
 ) -> Vec<Bytes> {
     let mut payloads = Vec::new();

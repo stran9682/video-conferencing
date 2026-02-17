@@ -112,32 +112,3 @@ impl RTPHeader {
         }
     }
 }
-
-pub struct RTPSession {
-    pub current_sequence_num : u16,
-    pub timestamp : u32,
-    pub increment : u32,
-    pub ssrc : u32
-}
-
-impl RTPSession {
-    pub fn next_packet (&mut self) {
-        self.timestamp = self.timestamp.wrapping_add(self.increment);
-    }
-
-    pub fn get_packet (&mut self, is_last_unit: bool) -> RTPHeader {
-        self.current_sequence_num = self.current_sequence_num.wrapping_add(1);
-
-        RTPHeader { 
-            version: 2,
-            padding: false,
-            extension: false,
-            marker: is_last_unit,
-            payload_type: 0,
-            sequence_number: self.current_sequence_num, 
-            timestamp: self.timestamp, 
-            ssrc: self.ssrc, 
-            // csrc:  
-        }
-    }
- }

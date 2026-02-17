@@ -7,7 +7,7 @@ use std::{io::{self}, sync::{Arc, OnceLock}};
 
 use tokio::{net::UdpSocket, runtime::Runtime, sync::mpsc};
 
-use crate::{interop::{audio::{EncodedAudio, rtp_audio_receiver}, video::{EncodedFrame, ReleaseCallback, rtp_frame_receiver, rtp_frame_sender}}, session_management::{peer_manager::PeerManager, signaling_server::run_signaling_server}};
+use crate::{interop::{audio::{EncodedAudio, rtp_audio_receiver}, video::{EncodedFrame, ReleaseCallback, rtp_frame_receiver, rtp_frame_sender}}, packets::{RTPSession, rtcp::start_rtcp}, session_management::{peer_manager::PeerManager, signaling_server::run_signaling_server}};
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
@@ -82,16 +82,43 @@ async fn network_loop_server (
     stream_type: StreamType
 ) -> io::Result<()> {
 
+    /*
+        TODO: Handle a reconnection
+        Some cases:
+        -   Small network timeout (ip address and SSRC are the same)
+            Honestly, not much needs to be done. Just wait out the network timeout
+            SHOULD fix itself eventually
+
+        -   Switch networks (IP address changes)
+            Handle a full restart, meanwhile hopefully clients can remove the old peer
+            Completely stop the backend and restart.
+
+        -   Just disconnecting arruptly, no reconnection
+            Clients need to detect a timeout period, and remove you
+            RTCP delay since LSR might be useful!
+     */
+   
     let my_local_ip = local_ip().unwrap();
-    let local_addr_str = my_local_ip.to_string();
+    let local_addr_str = my_local_ip.to_string() + ":0";
     println!("{local_addr_str}");
 
-    let socket = UdpSocket::bind(local_addr_str + ":0").await?;
+    let socket = UdpSocket::bind(local_addr_str.clone()).await?;
     let socket = Arc::new(socket);
+    let rtcp_socket = UdpSocket::bind(local_addr_str).await?;
 
-    // TOOD create a random SSRC, this will fail when there's more than two people.
-    let peer_manager = Arc::new(PeerManager::new(socket.local_addr()?, 1));
+    // Session management objects
+    // we'll be using these throughout the program.
+    let rtp_session = RTPSession::new(
+        match stream_type {
+            StreamType::Audio => 0, // TODO: AUDIO !! WE'll GET THERE!
+            StreamType::Video => 3000
+        },  
+        socket.local_addr()?,
+        rtcp_socket.local_addr()?
+    );
+    let peer_manager = Arc::new(PeerManager::new(rtp_session));
 
+    // Signaling server thread
     let peer_manager_clone = Arc::clone(&peer_manager);        
     runtime().spawn(async move {
         if let Err(e) = run_signaling_server(peer_manager_clone, stream_type).await {
@@ -99,13 +126,15 @@ async fn network_loop_server (
         }
     });
 
+    // RTCP Sender and receiver threads
+    let peer_manager_clone = Arc::clone(&peer_manager);
+    runtime().spawn(async move {
+        start_rtcp(rtcp_socket, peer_manager_clone)
+    });
 
+    // Video and Audio sender and receiver threads    
     let sender_socket = Arc::clone(&socket);
     let sender_peers = Arc::clone(&peer_manager);
-    
-    // TODO: create a rtcp sender and receiver
-
-
     match stream_type {
         StreamType::Video => {
             let (tx, rx) = mpsc::channel::<EncodedFrame>(CHANNEL_BUFFER_SIZE);
@@ -116,7 +145,11 @@ async fn network_loop_server (
             })?;
 
             runtime().spawn(async move {
-                rtp_frame_sender(sender_socket, sender_peers, rx).await;
+                rtp_frame_sender(
+                    sender_socket,
+                     sender_peers,
+                    rx
+                ).await;
             });
 
             rtp_frame_receiver(socket, peer_manager, 90_000).await

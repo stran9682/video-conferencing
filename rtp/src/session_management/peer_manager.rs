@@ -2,6 +2,8 @@ use std::{collections::VecDeque, net::SocketAddr};
 use bytes::Bytes;
 use dashmap::DashMap;
 
+use crate::packets::RTPSession;
+
 static WINDOW_SIZE: usize = 50;
 static MAX_DROPOUT: u16 = 3000;
 
@@ -82,18 +84,23 @@ pub struct PeerManager {
     // sending thread can just use this instead, 
     // instead of blocking the receiving
     peer_addresses: DashMap<u32, SocketAddr>, 
-
-    pub local_addr: SocketAddr,
-    pub local_ssrc: u32
+    pub rtp_session: RTPSession
 }
 
 impl PeerManager {
-    pub fn new(local_addr: SocketAddr, local_ssrc: u32) -> Self {
+    pub fn local_ssrc(&self) -> u32 {
+        self.rtp_session.ssrc
+    }
+
+    pub fn local_addr(&self) -> SocketAddr {
+        self.rtp_session.local_addr
+    }
+ 
+    pub fn new(rtp_session: RTPSession) -> Self {
         Self {
             peers: DashMap::new(),
             peer_addresses: DashMap::new(),
-            local_addr,
-            local_ssrc
+            rtp_session
         }
     }
 
