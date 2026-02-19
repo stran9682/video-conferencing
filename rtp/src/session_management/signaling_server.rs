@@ -335,9 +335,9 @@ async fn write_response(media_type: &str) -> io::Result<BytesMut> {
 
     let header = format!(
         "{}\r\n{}\r\n{}\r\n",
-        media_type, // 0
+        media_type,
         signaling_addr.to_string(),
-        peer_manager.local_addr(), // 1
+        peer_manager.local_rtp_addr(), 
     );
     response.put(header.as_bytes());
     response.put_u32(peer_manager.local_ssrc());
@@ -418,6 +418,13 @@ async fn handle_request(request: &Vec<&[u8]>, media_type: &str) -> io::Result<()
         .parse()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
+    let ssrc = u32::from_be_bytes(request[3][..4].try_into().map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Somemone sent you a faulty u32 SSRC. {}", e),
+        )
+    })?);
+
     let Some(context) = PEER_VIDEO_CONTEXT.get() else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -438,13 +445,6 @@ async fn handle_request(request: &Vec<&[u8]>, media_type: &str) -> io::Result<()
             media_addr.to_string().as_ptr(),
         )
     };
-
-    let ssrc = u32::from_be_bytes(request[3][..4].try_into().map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("Somemone sent you a faulty u32 SSRC. {}", e),
-        )
-    })?);
 
     peer_manager.add_peer(ssrc, media_addr, swift_peer_model);
     specifications.add_peer(signaling_addr);

@@ -90,7 +90,7 @@ impl PeerManager {
         self.rtp_session.ssrc
     }
 
-    pub fn local_addr(&self) -> SocketAddr {
+    pub fn local_rtp_addr(&self) -> SocketAddr {
         self.rtp_session.local_addr
     }
 

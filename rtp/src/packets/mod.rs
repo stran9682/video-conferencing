@@ -15,11 +15,10 @@ pub struct RTPSession {
     pub ssrc: u32,
 
     pub local_addr: SocketAddr,
-    pub rtcp_addr: SocketAddr,
 }
 
 impl RTPSession {
-    pub fn new(increment: u32, local_addr: SocketAddr, rtcp_addr: SocketAddr) -> Self {
+    pub fn new(increment: u32, local_addr: SocketAddr) -> Self {
         let mut rng = rand::rng();
 
         Self {
@@ -28,7 +27,6 @@ impl RTPSession {
             increment,
             ssrc: rng.next_u32(),
             local_addr,
-            rtcp_addr,
         }
     }
 

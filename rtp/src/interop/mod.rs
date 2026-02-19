@@ -102,13 +102,15 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
            RTCP delay since LSR might be useful!
     */
 
-    let my_local_ip = local_ip().unwrap();
-    let local_addr_str = my_local_ip.to_string() + ":0";
-    println!("{local_addr_str}");
+    let local_ip = local_ip().unwrap();
+    println!("{local_ip}");
 
-    let socket = UdpSocket::bind(local_addr_str.clone()).await?;
+    let socket = UdpSocket::bind(local_ip.to_string() + ":0").await?;
     let socket = Arc::new(socket);
-    let rtcp_socket = UdpSocket::bind(local_addr_str).await?;
+
+    // RTCP: Sending to another peer's address is just their RTP address +1
+    let rtcp_port = socket.local_addr()?.port() + 1;
+    let rtcp_socket = UdpSocket::bind(format!("{}:{}", local_ip.to_string(), rtcp_port)).await?;
 
     // Session management objects
     // we'll be using these throughout the program.
@@ -118,7 +120,6 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
             StreamType::Video => 3000,
         },
         socket.local_addr()?,
-        rtcp_socket.local_addr()?,
     );
     let peer_manager = Arc::new(PeerManager::new(rtp_session));
 

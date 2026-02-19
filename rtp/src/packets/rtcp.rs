@@ -108,6 +108,10 @@ pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>) {
     rtcp_receiver(socket, peer_manager).await;
 }
 
-async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {}
+async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {
+    let peers = peer_manager.get_peers();
+
+    
+}
 
 async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {}
