@@ -80,7 +80,7 @@ impl RTCPHeader {
 
     pub fn deserialize(packet: &mut BytesMut) -> RTCPHeader {
         let b0 = packet.get_u8();
-        let version = (b0 >> VERSION_SHIFT) & VERSION_MASK;
+        //let version = (b0 >> VERSION_SHIFT) & VERSION_MASK;
 
         let padding = ((b0 >> PADDING_SHIFT) & PADDING_MASK) > 0;
         let count = (b0 >> COUNT_SHIFT) & COUNT_MASK;
@@ -110,8 +110,6 @@ pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>) {
 
 async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {
     let peers = peer_manager.get_peers();
-
-    
 }
 
 async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {}
