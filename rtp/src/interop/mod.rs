@@ -110,7 +110,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
 
     // RTCP: Sending to another peer's address is just their RTP address +1
     let rtcp_port = socket.local_addr()?.port() + 1;
-    let rtcp_socket = UdpSocket::bind(format!("{}:{}", local_ip.to_string(), rtcp_port)).await?;
+    let rtcp_socket = UdpSocket::bind(format!("{}:{}", local_ip, rtcp_port)).await?;
 
     // Session management objects
     // we'll be using these throughout the program.

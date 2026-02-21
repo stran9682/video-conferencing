@@ -1,10 +1,10 @@
 /*
-    Graciously from https://github.com/webrtc-rs/rtcp/blob/main/src/sender_report/mod.rs
- */
+   Graciously from https://github.com/webrtc-rs/rtcp/blob/main/src/sender_report/mod.rs
+*/
 
 use bytes::{Buf, BufMut, BytesMut};
 
-use crate::packets::rtcp::{reception_report::ReceptionReport};
+use crate::packets::rtcp::reception_report::ReceptionReport;
 
 pub struct SenderReport {
     pub ssrc: u32,
@@ -68,7 +68,7 @@ impl SenderReport {
         buf
     }
 
-    pub fn deserialize(packet:  &mut BytesMut, report_counts: u8) -> Self {
+    pub fn deserialize(packet: &mut BytesMut, report_counts: u8) -> Self {
         let ssrc = packet.get_u32();
         let ntp_time = packet.get_u64();
         let rtp_time = packet.get_u32();

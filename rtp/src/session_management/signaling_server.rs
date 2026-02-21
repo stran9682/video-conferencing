@@ -224,7 +224,14 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
         )
     })?;
 
-    let response = write_response(&request.stream_type).await?;
+    let request_stream_type = match request.stream_type {
+        StreamTypeWithArgs::Audio => StreamType::Audio,
+        StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video
+    };
+
+    let personal_args = get_specifications(request_stream_type).await?;
+
+    let response = write_response(personal_args).await?;
 
     socket.write_all(&response.as_bytes()).await?;
 
@@ -235,7 +242,7 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
 
 pub async fn connect_to_signaling_server(
     server_addr: Option<String>,
-    media_type: StreamType,
+    stream_type: StreamType,
 ) -> io::Result<()> {
     // this is the case when you're the first person.
     // You don't have anyone to connect to
@@ -243,40 +250,25 @@ pub async fn connect_to_signaling_server(
         return Ok(());
     };
 
-    let Some(specifications) = PEER_SPECIFICATIONS.get() else {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "Specification manager not initialized",
-        ));
-    };
+    let personal_args = get_specifications(stream_type).await?;
 
-    let h264_args = specifications.self_h264_args.lock().await;
-
-    let response_args = match media_type {
-        StreamType::Audio => StreamTypeWithArgs::Audio,
-        StreamType::Video => StreamTypeWithArgs::Video {
-            pps: h264_args.pps.to_vec(),
-            sps: h264_args.sps.to_vec(),
-        },
-    };
-
-    let packet = write_response(&response_args).await?;
+    let request = write_response(personal_args).await?;
 
     //  this is silly, but connect to the first person and get their data and everyone's signalling address
     //  You'll only get their data! This is to make sure you connect to everyone
     //  addresses will be stored in vector
     let mut addresses: Vec<String> = Vec::new();
-    add_peers(&server_addr, &packet, &mut addresses).await?;
+    add_peers(&server_addr, &request, &mut addresses).await?;
 
     //  now, just loop through the addresses and get their data.
     //  The addresses are redundant since you got them already
     //  hence the empty vector
 
-    println!("{:?}", addresses);
+    println!("{}", addresses.len());
     for signaling_addr in &addresses {
         if let Err(e) = add_peers(
             signaling_addr,
-            &packet,
+            &request,
             &mut Vec::with_capacity(addresses.len()),
         )
         .await
@@ -330,7 +322,7 @@ async fn add_peers(
     Ok(())
 }
 
-async fn write_response(media_type: &StreamTypeWithArgs) -> io::Result<String> {
+async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
     let peer_manager = match media_type {
         StreamTypeWithArgs::Audio => AUDIO_PEERS.get(),
         StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.get(),
@@ -362,7 +354,7 @@ async fn write_response(media_type: &StreamTypeWithArgs) -> io::Result<String> {
         signaling_address: signaling_addr.to_string(),
         local_rtp_address: peer_manager.local_rtp_addr().to_string(),
         ssrc: peer_manager.local_ssrc(),
-        stream_type: media_type.clone(),
+        stream_type: media_type,
         peer_signalling_addresses: specifications
             .get_peers()
             .iter()
@@ -439,4 +431,25 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
     specifications.add_peer(signaling_addr);
 
     Ok(())
+}
+
+async fn get_specifications(stream_type: StreamType) -> io::Result<StreamTypeWithArgs> {
+    let Some(specifications) = PEER_SPECIFICATIONS.get() else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Specification manager not initialized",
+        ));
+    };
+
+    let h264_args = specifications.self_h264_args.lock().await;
+
+    let response_args = match stream_type {
+        StreamType::Audio => StreamTypeWithArgs::Audio,
+        StreamType::Video => StreamTypeWithArgs::Video {
+            pps: h264_args.pps.to_vec(),
+            sps: h264_args.sps.to_vec(),
+        },
+    };
+
+    Ok(response_args)
 }

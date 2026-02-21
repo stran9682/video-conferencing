@@ -1,6 +1,6 @@
 /*
-    Graciously from https://github.com/webrtc-rs/rtcp/blob/main/src/receiver_report/mod.rs
- */
+   Graciously from https://github.com/webrtc-rs/rtcp/blob/main/src/receiver_report/mod.rs
+*/
 
 use bytes::{Buf, BufMut, BytesMut};
 
@@ -52,7 +52,7 @@ impl ReceptionReport {
         buf
     }
 
-    pub fn deserialize(packet : &mut BytesMut) -> Self {
+    pub fn deserialize(packet: &mut BytesMut) -> Self {
         let ssrc = packet.get_u32();
         let fraction_lost = packet.get_u8();
 
@@ -77,6 +77,3 @@ impl ReceptionReport {
         }
     }
 }
-
-
-
