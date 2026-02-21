@@ -1,22 +1,4 @@
-use std::sync::Arc;
-
 use bytes::{Buf, BufMut, BytesMut};
-use tokio::net::UdpSocket;
-
-use crate::{interop::runtime, session_management::peer_manager::PeerManager};
-
-pub const RTP_VERSION: u8 = 2;
-pub const VERSION_SHIFT: u8 = 6;
-pub const VERSION_MASK: u8 = 0x3;
-pub const PADDING_SHIFT: u8 = 5;
-pub const PADDING_MASK: u8 = 0x1;
-pub const COUNT_SHIFT: u8 = 0;
-pub const COUNT_MASK: u8 = 0x1f;
-
-pub const HEADER_LENGTH: usize = 4;
-pub const COUNT_MAX: usize = (1 << 5) - 1;
-pub const SSRC_LENGTH: usize = 4;
-pub const SDES_MAX_OCTET_COUNT: usize = (1 << 8) - 1;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
@@ -65,11 +47,11 @@ pub struct RTCPHeader {
 impl RTCPHeader {
     pub fn serialize(&self) -> BytesMut {
         // TODO: Adjust this number lol
-        let mut buf = BytesMut::with_capacity(64);
+        let mut buf = BytesMut::with_capacity(4);
 
-        let b0 = (RTP_VERSION << VERSION_SHIFT)
-            | ((self.padding as u8) << PADDING_SHIFT)
-            | (self.count << COUNT_SHIFT);
+        let b0 = (2 << 6)
+            | ((self.padding as u8) << 5)
+            | (self.count << 0);
 
         buf.put_u8(b0);
         buf.put_u8(self.packet_type as u8);
@@ -82,8 +64,8 @@ impl RTCPHeader {
         let b0 = packet.get_u8();
         //let version = (b0 >> VERSION_SHIFT) & VERSION_MASK;
 
-        let padding = ((b0 >> PADDING_SHIFT) & PADDING_MASK) > 0;
-        let count = (b0 >> COUNT_SHIFT) & COUNT_MASK;
+        let padding = ((b0 >> 5) & 0x1) > 0;
+        let count = (b0 >> 0) &  0x1f;
         let packet_type = PacketType::from(packet.get_u8());
         let length = packet.get_u16();
 
@@ -95,21 +77,3 @@ impl RTCPHeader {
         }
     }
 }
-
-pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>) {
-    let socket = Arc::new(socket);
-
-    let socket_clone = Arc::clone(&socket);
-    let peer_manager_clone = Arc::clone(&peer_manager);
-    runtime().spawn(async move {
-        rtcp_sender(socket_clone, peer_manager_clone).await;
-    });
-
-    rtcp_receiver(socket, peer_manager).await;
-}
-
-async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {
-    let peers = peer_manager.get_peers();
-}
-
-async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {}
