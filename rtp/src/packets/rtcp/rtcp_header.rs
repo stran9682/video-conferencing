@@ -1,7 +1,6 @@
 use bytes::{Buf, BufMut, BytesMut};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u8)]
 pub enum PacketType {
     Unsupported = 0,
     SenderReport = 200,              // RFC 3550, 6.4.1
@@ -14,7 +13,7 @@ pub enum PacketType {
     ExtendedReport = 207,            // RFC 3611
 }
 
-impl From<u8> for PacketType {
+impl PacketType {
     fn from(b: u8) -> Self {
         match b {
             200 => PacketType::SenderReport,              // RFC 3550, 6.4.1
@@ -30,17 +29,17 @@ impl From<u8> for PacketType {
     }
 }
 
+/*
+     0                   1                   2                   3
+     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |V=2|P|    RC   |   PT=SR=200   |             length            |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
 pub struct RTCPHeader {
-    /// If the padding bit is set, this individual RTCP packet contains
-    /// some additional padding octets at the end which are not part of
-    /// the control information but are included in the length field.
     pub padding: bool,
-    /// The number of reception reports, sources contained or FMT in this packet (depending on the Type)
     pub count: u8,
-    /// The RTCP packet type for this packet
     pub packet_type: PacketType,
-    /// The length of this RTCP packet in 32-bit words minus one,
-    /// including the header and any padding.
     pub length: u16,
 }
 

@@ -1,4 +1,8 @@
-use bytes::{BufMut, BytesMut};
+/*
+    Graciously from https://github.com/webrtc-rs/rtcp/blob/main/src/sender_report/mod.rs
+ */
+
+use bytes::{Buf, BufMut, BytesMut};
 
 use crate::packets::rtcp::{reception_report::ReceptionReport};
 
@@ -12,7 +16,7 @@ pub struct SenderReport {
 }
 
 impl SenderReport {
-    fn serlize(&self) -> BytesMut {
+    fn serialize(&self) -> BytesMut {
         /*
          *         0                   1                   2                   3
          *         0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -62,5 +66,28 @@ impl SenderReport {
             buf.put(report.serialize());
         }
         buf
+    }
+
+    pub fn deserialize(packet:  &mut BytesMut, report_counts: u8) -> Self {
+        let ssrc = packet.get_u32();
+        let ntp_time = packet.get_u64();
+        let rtp_time = packet.get_u32();
+        let packet_count = packet.get_u32();
+        let octet_count = packet.get_u32();
+
+        let mut reports = Vec::with_capacity(report_counts as usize);
+        for _ in 0..report_counts {
+            let reception_report = ReceptionReport::deserialize(packet);
+            reports.push(reception_report);
+        }
+
+        SenderReport {
+            ssrc,
+            ntp_time,
+            rtp_time,
+            packet_count,
+            octet_count,
+            reports,
+        }
     }
 }

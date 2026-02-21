@@ -1,4 +1,8 @@
-use bytes::{BufMut, BytesMut};
+/*
+    Graciously from https://github.com/webrtc-rs/rtcp/blob/main/src/receiver_report/mod.rs
+ */
+
+use bytes::{Buf, BufMut, BytesMut};
 
 pub struct ReceptionReport {
     pub ssrc: u32,
@@ -11,7 +15,6 @@ pub struct ReceptionReport {
 }
 
 impl ReceptionReport {
-    /// marshal_to encodes the ReceptionReport in binary
     pub fn serialize(&self) -> BytesMut {
         /*
          *  0                   1                   2                   3
@@ -47,6 +50,31 @@ impl ReceptionReport {
         buf.put_u32(self.delay);
 
         buf
+    }
+
+    pub fn deserialize(packet : &mut BytesMut) -> Self {
+        let ssrc = packet.get_u32();
+        let fraction_lost = packet.get_u8();
+
+        let t0 = packet.get_u8();
+        let t1 = packet.get_u8();
+        let t2 = packet.get_u8();
+        let total_lost = (t2 as u32) | (t1 as u32) << 8 | (t0 as u32) << 16;
+
+        let last_sequence_number = packet.get_u32();
+        let jitter = packet.get_u32();
+        let last_sender_report = packet.get_u32();
+        let delay = packet.get_u32();
+
+        ReceptionReport {
+            ssrc,
+            fraction_lost,
+            total_lost,
+            last_sequence_number,
+            jitter,
+            last_sender_report,
+            delay,
+        }
     }
 }
 
