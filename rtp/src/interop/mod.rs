@@ -43,6 +43,7 @@ pub extern "C" fn rust_send_frame(
     len: usize,
     context: *mut std::ffi::c_void,
     release_callback: ReleaseCallback,
+    timestamp: u32
 ) -> bool {
     let tx = match FRAME_TX.get() {
         Some(tx) => tx,
@@ -58,6 +59,7 @@ pub extern "C" fn rust_send_frame(
         len,
         context,
         release_callback,
+        timestamp
     };
 
     match tx.try_send(frame) {
@@ -114,13 +116,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
 
     // Session management objects
     // we'll be using these throughout the program.
-    let rtp_session = RTPSession::new(
-        match stream_type {
-            StreamType::Audio => 0, // TODO: AUDIO !! WE'll GET THERE!
-            StreamType::Video => 3000,
-        },
-        socket.local_addr()?,
-    );
+    let rtp_session = RTPSession::new(socket.local_addr()?);
     let peer_manager = Arc::new(PeerManager::new(rtp_session));
 
     // Signaling server thread
@@ -133,7 +129,16 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
 
     // RTCP Sender and receiver threads
     let peer_manager_clone = Arc::clone(&peer_manager);
-    runtime().spawn(async move { start_rtcp(rtcp_socket, peer_manager_clone) });
+    runtime().spawn(async move {
+        start_rtcp(
+            rtcp_socket,
+            peer_manager_clone,
+            match stream_type {
+                StreamType::Audio => 90,
+                StreamType::Video => 3000, // ~ around 1 Kb per frame 
+            },
+        )
+    });
 
     // Video and Audio sender and receiver threads
     let sender_socket = Arc::clone(&socket);

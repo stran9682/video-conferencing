@@ -150,6 +150,10 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
         }
     }
     
+    // MARK: Presentation Timestamp
+    let pts = sampleBuffer.presentationTimeStamp.seconds * 90000
+    let timestamp = UInt32(UInt64(pts) & 0xFFFFFFFF)
+    
     // MARK: Pointers to data
     
     // the h.264 data, get pointer to cmblockbuffer
@@ -163,7 +167,7 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
     let unmanagedBuffer = Unmanaged.passRetained(sampleBuffer)  // increments the counter
     let context = unmanagedBuffer.toOpaque()                    // get a pointer to pass to C
     
-    rust_send_frame(dataPointer, UInt(length), context, swift_release_frame_buffer)
+    rust_send_frame(dataPointer, UInt(length), context, swift_release_frame_buffer, timestamp)
 }
 
 func swift_release_frame_buffer(_ context: UnsafeMutableRawPointer?) {
@@ -171,4 +175,19 @@ func swift_release_frame_buffer(_ context: UnsafeMutableRawPointer?) {
     
     // Release the manual retain
     let _ = Unmanaged<CMSampleBuffer>.fromOpaque(context).takeRetainedValue()
+}
+
+func getRTCPTimestampPair() -> (ntp: UInt64, rtp: UInt32) {
+    let now = Date().timeIntervalSince1970
+    let hostNow = CMClockGetTime(CMClockGetHostTimeClock())
+    
+    let ntpOffset: Double = 2208988800
+    let ntpSeconds = UInt32(now + ntpOffset)
+    let ntpFraction = UInt32((now.truncatingRemainder(dividingBy: 1)) * Double(UInt32.max))
+    let ntpFull = (UInt64(ntpSeconds) << 32) | UInt64(ntpFraction)
+    
+    let elapsedSeconds = CMTimeGetSeconds(hostNow)
+    let rtpTimestamp = UInt32(UInt64(elapsedSeconds * 90000) & 0xFFFFFFFF)
+    
+    return (ntpFull, rtpTimestamp)
 }

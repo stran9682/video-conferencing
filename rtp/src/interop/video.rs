@@ -26,6 +26,7 @@ pub struct EncodedFrame {
     pub len: usize,
     pub context: *mut std::ffi::c_void,
     pub release_callback: ReleaseCallback,
+    pub timestamp: u32
 }
 
 impl Drop for EncodedFrame {
@@ -56,17 +57,23 @@ pub async fn rtp_frame_sender(
 
         // construct the slice on the SPOT!
         let data = unsafe { std::slice::from_raw_parts(frame.data, frame.len) };
+        let timestamp = frame.timestamp;
 
+        // we split the frame if it contains multiple NAL units, usually not though
         let nal_units = get_nal_units(data);
         let mut nal_units = nal_units.iter().peekable();
 
         while let Some(nal_unit) = nal_units.next() {
+
+            // Split a NAL unit into multiple packets
             let fragments = get_fragments(
                 nal_unit,
                 &peer_manager.rtp_session,
-                nal_units.peek().is_none(),
+                nal_units.peek().is_none(), // last packet of the frame gets marked
+                timestamp
             );
 
+            // send each packet to every peer
             for fragment in fragments {
                 for addr in peers.iter() {
                     match socket.send_to(&fragment, addr).await {
@@ -76,8 +83,6 @@ pub async fn rtp_frame_sender(
                 }
             }
         }
-
-        peer_manager.rtp_session.next_packet(); // this will increment the timestamp by 3000. (90kHz / 30 fps)
     }
 }
 
@@ -92,7 +97,7 @@ pub async fn rtp_frame_receiver(
     // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
 
     loop {
-        let (bytes_read, addr) = socket.recv_from(&mut buffer).await?;
+        let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
 
         // there's absolutely a bug where if the time switches playout will be messed up!
         // (ex: when there's daylight savings)
@@ -113,15 +118,11 @@ pub async fn rtp_frame_receiver(
             }
         };
 
+        // Don't worry too much about copying, we do need to store it anyways
         let mut data = BytesMut::with_capacity(bytes_read);
         data.put_slice(&buffer[..bytes_read]);
 
         let header = RTPHeader::deserialize(&mut data);
-
-        // TODO:
-        // if RTP SSRC has been sent with a new address,
-        // update it so the frame sender can be send it to updated address
-        // though signalling may have handled it first, just redundancy
 
         let play_out_time = delay_calculator.calculate_playout_time(
             &peer_manager,

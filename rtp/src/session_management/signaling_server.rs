@@ -226,7 +226,7 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
 
     let request_stream_type = match request.stream_type {
         StreamTypeWithArgs::Audio => StreamType::Audio,
-        StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video
+        StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
     };
 
     let personal_args = get_specifications(request_stream_type).await?;
