@@ -176,18 +176,3 @@ func swift_release_frame_buffer(_ context: UnsafeMutableRawPointer?) {
     // Release the manual retain
     let _ = Unmanaged<CMSampleBuffer>.fromOpaque(context).takeRetainedValue()
 }
-
-func getRTCPTimestampPair() -> (ntp: UInt64, rtp: UInt32) {
-    let now = Date().timeIntervalSince1970
-    let hostNow = CMClockGetTime(CMClockGetHostTimeClock())
-    
-    let ntpOffset: Double = 2208988800
-    let ntpSeconds = UInt32(now + ntpOffset)
-    let ntpFraction = UInt32((now.truncatingRemainder(dividingBy: 1)) * Double(UInt32.max))
-    let ntpFull = (UInt64(ntpSeconds) << 32) | UInt64(ntpFraction)
-    
-    let elapsedSeconds = CMTimeGetSeconds(hostNow)
-    let rtpTimestamp = UInt32(UInt64(elapsedSeconds * 90000) & 0xFFFFFFFF)
-    
-    return (ntpFull, rtpTimestamp)
-}

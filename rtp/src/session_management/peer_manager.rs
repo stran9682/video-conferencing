@@ -57,7 +57,7 @@ impl Peer {
             self.window.pop_back();
         }
 
-        let min = self.window.iter().fold(0, |min, val| {
+        let min = self.window.iter().fold(self.window[0], |min, val| {
             if val.wrapping_sub(min) & 0x80000000 != 0 {
                 *val
             } else {

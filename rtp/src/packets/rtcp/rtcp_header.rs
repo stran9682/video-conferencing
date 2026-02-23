@@ -4,27 +4,17 @@ use bytes::{Buf, BufMut, BytesMut};
 pub enum PacketType {
     Unsupported = 0,
     SenderReport = 200,              // RFC 3550, 6.4.1
-    ReceiverReport = 201,            // RFC 3550, 6.4.2
     SourceDescription = 202,         // RFC 3550, 6.5
     Goodbye = 203,                   // RFC 3550, 6.6
-    ApplicationDefined = 204,        // RFC 3550, 6.7 (unimplemented)
-    TransportSpecificFeedback = 205, // RFC 4585, 6051
-    PayloadSpecificFeedback = 206,   // RFC 4585, 6.3
-    ExtendedReport = 207,            // RFC 3611
 }
 
 impl PacketType {
     fn from(b: u8) -> Self {
         match b {
             200 => PacketType::SenderReport,              // RFC 3550, 6.4.1
-            201 => PacketType::ReceiverReport,            // RFC 3550, 6.4.2
             202 => PacketType::SourceDescription,         // RFC 3550, 6.5
             203 => PacketType::Goodbye,                   // RFC 3550, 6.6
-            204 => PacketType::ApplicationDefined,        // RFC 3550, 6.7 (unimplemented)
-            205 => PacketType::TransportSpecificFeedback, // RFC 4585, 6051
-            206 => PacketType::PayloadSpecificFeedback,   // RFC 4585, 6.3
-            207 => PacketType::ExtendedReport,            // RFC 3611
-            _ => PacketType::Unsupported,
+            _ => PacketType::Unsupported
         }
     }
 }

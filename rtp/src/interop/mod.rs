@@ -133,10 +133,6 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
         start_rtcp(
             rtcp_socket,
             peer_manager_clone,
-            match stream_type {
-                StreamType::Audio => 90,
-                StreamType::Video => 3000, // ~ around 1 Kb per frame 
-            },
         )
     });
 

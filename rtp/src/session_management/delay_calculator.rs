@@ -62,6 +62,8 @@ impl DelayCalculator {
             playout_time: base_playout_time,
             coded_data: Vec::new(),
         };
+        // we calculate the base playout time every packet, but if an existing playoutbuffernode with 
+        // the same RTP timestamp exists already, the struct is essentially discarded
 
         let fragment = Fragment::new(rtp_header.sequence_number, data.freeze());
 
