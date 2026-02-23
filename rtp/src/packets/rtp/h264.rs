@@ -4,7 +4,12 @@ use crate::packets::RTPSession;
 
 const AVCC_HEADER_LENGTH: usize = 4;
 
-pub fn get_fragments(payload: &[u8], rtp_session: &RTPSession, is_last_unit: bool, timestamp: u32) -> Vec<Bytes> {
+pub fn get_fragments(
+    payload: &[u8],
+    rtp_session: &RTPSession,
+    is_last_unit: bool,
+    timestamp: u32,
+) -> Vec<Bytes> {
     let mut payloads = Vec::new();
 
     let max_fragment_size = 1200; // low key a magic number...
@@ -16,7 +21,7 @@ pub fn get_fragments(payload: &[u8], rtp_session: &RTPSession, is_last_unit: boo
     let nalu_type = payload[0] & 0x1F;
 
     if payload.len() <= max_fragment_size {
-        let rtp_header = rtp_session.get_packet(is_last_unit, timestamp);
+        let rtp_header = rtp_session.get_packet(is_last_unit, timestamp, payload.len() as u32);
 
         let rtp_header = rtp_header.serialize();
 
@@ -35,7 +40,8 @@ pub fn get_fragments(payload: &[u8], rtp_session: &RTPSession, is_last_unit: boo
         let rtp_header = rtp_session
             .get_packet(
                 is_last_unit && max_fragment_size >= nalu_data_remaining, // VERY last one
-                timestamp
+                timestamp,
+                current_fragment_size as u32 + 2,
             )
             .serialize(); // this will move the sequence number by 1
 

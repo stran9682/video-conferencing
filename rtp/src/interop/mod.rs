@@ -43,7 +43,7 @@ pub extern "C" fn rust_send_frame(
     len: usize,
     context: *mut std::ffi::c_void,
     release_callback: ReleaseCallback,
-    timestamp: u32
+    timestamp: u32,
 ) -> bool {
     let tx = match FRAME_TX.get() {
         Some(tx) => tx,
@@ -59,7 +59,7 @@ pub extern "C" fn rust_send_frame(
         len,
         context,
         release_callback,
-        timestamp
+        timestamp,
     };
 
     match tx.try_send(frame) {
@@ -129,12 +129,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
 
     // RTCP Sender and receiver threads
     let peer_manager_clone = Arc::clone(&peer_manager);
-    runtime().spawn(async move {
-        start_rtcp(
-            rtcp_socket,
-            peer_manager_clone,
-        )
-    });
+    runtime().spawn(async move { start_rtcp(rtcp_socket, peer_manager_clone) });
 
     // Video and Audio sender and receiver threads
     let sender_socket = Arc::clone(&socket);

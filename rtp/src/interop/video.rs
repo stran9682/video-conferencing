@@ -26,7 +26,7 @@ pub struct EncodedFrame {
     pub len: usize,
     pub context: *mut std::ffi::c_void,
     pub release_callback: ReleaseCallback,
-    pub timestamp: u32
+    pub timestamp: u32,
 }
 
 impl Drop for EncodedFrame {
@@ -64,13 +64,12 @@ pub async fn rtp_frame_sender(
         let mut nal_units = nal_units.iter().peekable();
 
         while let Some(nal_unit) = nal_units.next() {
-
             // Split a NAL unit into multiple packets
             let fragments = get_fragments(
                 nal_unit,
                 &peer_manager.rtp_session,
                 nal_units.peek().is_none(), // last packet of the frame gets marked
-                timestamp
+                timestamp,
             );
 
             // send each packet to every peer

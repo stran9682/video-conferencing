@@ -5,13 +5,13 @@
 use bytes::{Buf, BufMut, BytesMut};
 
 pub struct ReceptionReport {
-    pub ssrc: u32,
+    pub reportee_ssrc: u32,
     pub fraction_lost: u8,
     pub total_lost: u32,
-    pub last_sequence_number: u32,
+    pub extended_sequence_number: u32,
     pub jitter: u32,
-    pub last_sender_report: u32,
-    pub delay: u32,
+    pub last_sr_timestamp: u32,
+    pub delay_since_last_sr: u32,
 }
 
 impl ReceptionReport {
@@ -36,7 +36,7 @@ impl ReceptionReport {
 
         let mut buf = BytesMut::with_capacity(24);
 
-        buf.put_u32(self.ssrc);
+        buf.put_u32(self.reportee_ssrc);
 
         buf.put_u8(self.fraction_lost);
 
@@ -44,16 +44,16 @@ impl ReceptionReport {
         buf.put_u8(((self.total_lost >> 8) & 0xFF) as u8);
         buf.put_u8((self.total_lost & 0xFF) as u8);
 
-        buf.put_u32(self.last_sequence_number);
+        buf.put_u32(self.extended_sequence_number);
         buf.put_u32(self.jitter);
-        buf.put_u32(self.last_sender_report);
-        buf.put_u32(self.delay);
+        buf.put_u32(self.last_sr_timestamp);
+        buf.put_u32(self.delay_since_last_sr);
 
         buf
     }
 
     pub fn deserialize(packet: &mut BytesMut) -> Self {
-        let ssrc = packet.get_u32();
+        let reportee_ssrc = packet.get_u32();
         let fraction_lost = packet.get_u8();
 
         let t0 = packet.get_u8();
@@ -61,19 +61,19 @@ impl ReceptionReport {
         let t2 = packet.get_u8();
         let total_lost = (t2 as u32) | (t1 as u32) << 8 | (t0 as u32) << 16;
 
-        let last_sequence_number = packet.get_u32();
+        let extended_sequence_number = packet.get_u32();
         let jitter = packet.get_u32();
-        let last_sender_report = packet.get_u32();
-        let delay = packet.get_u32();
+        let last_sr_timestamp = packet.get_u32();
+        let delay_since_last_sr = packet.get_u32();
 
         ReceptionReport {
-            ssrc,
+            reportee_ssrc,
             fraction_lost,
             total_lost,
-            last_sequence_number,
+            extended_sequence_number,
             jitter,
-            last_sender_report,
-            delay,
+            last_sr_timestamp,
+            delay_since_last_sr,
         }
     }
 }

@@ -3,6 +3,7 @@ use dashmap::DashMap;
 use std::{collections::VecDeque, net::SocketAddr};
 
 use crate::packets::RTPSession;
+use crate::packets::rtcp::reception_report::ReceptionReport;
 
 static WINDOW_SIZE: usize = 50;
 static MAX_DROPOUT: u16 = 3000;
@@ -31,18 +32,26 @@ impl Fragment {
 
 pub struct Peer {
     max_sequence_number: Option<u16>,
+    initial_sequence_number: Option<u16>,
+    packets_received: u32,
     wrap_around_count: u32,
     swift_peer_model: *mut std::ffi::c_void,
     window: VecDeque<u32>,
     min_window: u32,
     playout_buffer: Vec<PlayoutBufferNode>,
+    last_sr_timestamp: u32,
+    delay_since_last_sr: u32,
 }
 
 impl Peer {
     pub fn new(swift_peer_model: *mut std::ffi::c_void) -> Self {
         Self {
+            delay_since_last_sr: 0,
+            last_sr_timestamp: 0,
+            packets_received: 0,
             wrap_around_count: 0,
             max_sequence_number: None,
+            initial_sequence_number: None,
             window: VecDeque::new(),
             min_window: u32::MAX,
             playout_buffer: Vec::new(),
@@ -52,6 +61,7 @@ impl Peer {
 
     pub fn set_and_get_min_window(&mut self, difference: u32) -> u32 {
         self.window.push_front(difference);
+        self.packets_received += 1;
 
         if self.window.len() > WINDOW_SIZE {
             self.window.pop_back();
@@ -68,6 +78,63 @@ impl Peer {
         self.min_window = min;
 
         return self.min_window;
+    }
+
+    pub fn add_node(&mut self, 
+        mut playout_buffer_node: PlayoutBufferNode,
+        mut fragment: Fragment
+    ) {
+        // accounting for wraparound
+        if let Some(max_sequence_number) = self.max_sequence_number {
+            let delta = fragment.sequence_num - max_sequence_number;
+
+            if delta < MAX_DROPOUT {
+                if fragment.sequence_num < max_sequence_number {
+                    self.wrap_around_count += 1;
+                }
+                self.max_sequence_number = Some(fragment.sequence_num);
+            } else if delta <= 65535 - 100 {
+                // sequence number made a large jump
+            } else {
+                // misordered packet.
+            }
+        } else {
+            // this is just to initalize it, usually the first frame
+            // bad network conditions shouldn't need to be handled here
+            self.max_sequence_number = Some(fragment.sequence_num);
+            self.initial_sequence_number = Some(fragment.sequence_num);
+        }
+
+        // use extended timestamp for ordering
+        fragment.extended_sequence_num =
+            fragment.sequence_num as u32 + (65536 * self.wrap_around_count);
+
+        let timestamp = playout_buffer_node.rtp_timestamp;
+
+        match self
+            .playout_buffer
+            .binary_search_by_key(&timestamp, |node| node.rtp_timestamp)
+        {
+            Ok(index) => {
+                let coded_data = &mut self.playout_buffer[index].coded_data;
+
+                let index = coded_data
+                    .binary_search_by_key(&fragment.extended_sequence_num, |frag| {
+                        frag.extended_sequence_num
+                    })
+                    .unwrap_or_else(|i| i);
+
+                coded_data.insert(index, fragment);
+            }
+            Err(index) => {
+                playout_buffer_node.coded_data.push(fragment);
+                self.playout_buffer.insert(index, playout_buffer_node);
+            }
+        }
+    }
+
+    pub fn update_last_sr_timestamp (&mut self, last_sr_timestamp: u32){
+        self.last_sr_timestamp = last_sr_timestamp;
     }
 }
 
@@ -140,8 +207,8 @@ impl PeerManager {
     pub fn add_playout_node_to_peer(
         &self,
         ssrc: u32,
-        mut playout_buffer_node: PlayoutBufferNode,
-        mut fragment: Fragment,
+        playout_buffer_node: PlayoutBufferNode,
+        fragment: Fragment,
     ) {
         let peers = &self.peers;
 
@@ -149,52 +216,7 @@ impl PeerManager {
             return;
         };
 
-        // accounting for wraparound
-        if let Some(max_sequence_number) = peer.max_sequence_number {
-            let delta = fragment.sequence_num - max_sequence_number;
-
-            if delta < MAX_DROPOUT {
-                if fragment.sequence_num < max_sequence_number {
-                    peer.wrap_around_count += 1;
-                }
-                peer.max_sequence_number = Some(fragment.sequence_num);
-            } else if delta <= 65535 - 100 {
-                // sequence number made a large jump
-            } else {
-                // misordered packet.
-            }
-        } else {
-            // this is just to initalize it, usually the first frame
-            // bad network conditions shouldn't need to be handled here
-            peer.max_sequence_number = Some(fragment.sequence_num);
-        }
-
-        // use extended timestamp for ordering
-        fragment.extended_sequence_num =
-            fragment.sequence_num as u32 + (65536 * peer.wrap_around_count);
-
-        let timestamp = playout_buffer_node.rtp_timestamp;
-
-        match peer
-            .playout_buffer
-            .binary_search_by_key(&timestamp, |node| node.rtp_timestamp)
-        {
-            Ok(index) => {
-                let coded_data = &mut peer.playout_buffer[index].coded_data;
-
-                let index = coded_data
-                    .binary_search_by_key(&fragment.extended_sequence_num, |frag| {
-                        frag.extended_sequence_num
-                    })
-                    .unwrap_or_else(|i| i);
-
-                coded_data.insert(index, fragment);
-            }
-            Err(index) => {
-                playout_buffer_node.coded_data.push(fragment);
-                peer.playout_buffer.insert(index, playout_buffer_node);
-            }
-        }
+        peer.add_node(playout_buffer_node, fragment);        
     }
 
     pub fn get_peers(&self) -> Vec<SocketAddr> {
@@ -212,5 +234,33 @@ impl PeerManager {
         };
 
         Some(node)
+    }
+
+    pub fn update_last_sr_timestamp(&self, ssrc: u32, last_sr_timestamp: u32) {
+        if let Some(mut peer) = self.peers.get_mut(&ssrc) {
+            peer.last_sr_timestamp = last_sr_timestamp;
+        }
+    }
+
+    pub fn get_reception_reports(&self) -> Vec<ReceptionReport> {
+        self.peers
+            .iter()
+            .map(|peer| {
+                let extended_sequence_number = peer.max_sequence_number.unwrap_or_else(|| 0) as u32
+                    + (65536 * peer.wrap_around_count);
+
+                ReceptionReport {
+                    reportee_ssrc: *peer.key(),
+                    fraction_lost: (),
+                    total_lost: (extended_sequence_number
+                        - peer.initial_sequence_number.unwrap_or_else(|| 0) as u32)
+                        - peer.packets_received,
+                    extended_sequence_number,
+                    jitter: (),
+                    last_sr_timestamp: peer.last_sr_timestamp,
+                    delay_since_last_sr: (),
+                }
+            })
+            .collect()
     }
 }
