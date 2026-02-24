@@ -3,7 +3,6 @@ pub mod rtcp_header;
 pub mod sender_report;
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use bytes::{BufMut, BytesMut};
 use rand::RngExt;
@@ -25,7 +24,9 @@ pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>) {
         rtcp_sender(socket_clone, peer_manager_clone).await;
     });
 
-    rtcp_receiver(socket, peer_manager).await;
+    if let Err(e) = rtcp_receiver(socket, peer_manager).await {
+        eprintln!("Something wrong with RTCP socket. Check: {}", e)
+    };
 }
 
 async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {
@@ -114,9 +115,6 @@ async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -
     loop {
         let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
 
-        let now = SystemTime::now();
-        let duration_since = now.duration_since(UNIX_EPOCH);
-
         let mut packet = BytesMut::with_capacity(bytes_read);
         packet.put(&buffer[..bytes_read]);
 
@@ -130,11 +128,8 @@ async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -
                     let last_sr_timestamp = (sender_report.ntp_time >> 16 & 0xFFFFFFFF) as u32;
 
                     peer_manager.update_last_sr_timestamp(sender_report.ssrc, last_sr_timestamp);
-
                 }
-                _ => {
-
-                }
+                _ => {}
             }
         }
     }

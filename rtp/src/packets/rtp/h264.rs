@@ -23,12 +23,8 @@ pub fn get_fragments(
     if payload.len() <= max_fragment_size {
         let rtp_header = rtp_session.get_packet(is_last_unit, timestamp, payload.len() as u32);
 
-        let rtp_header = rtp_header.serialize();
-
-        let mut out = BytesMut::with_capacity(payload.len() + rtp_header.len());
-
-        out.put(rtp_header);
-        out.put(payload);
+        let mut out = rtp_header.serialize();
+        out.extend_from_slice(payload);
 
         payloads.push(out.freeze());
         return payloads;
