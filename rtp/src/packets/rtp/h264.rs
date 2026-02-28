@@ -149,7 +149,9 @@ pub fn get_nal_units(data: &[u8]) -> Vec<&[u8]> {
 }
 
 pub fn rtp_to_avcc_h264(packets: Vec<Bytes>) -> BytesMut {
-    let mut payload = BytesMut::new();
+    let mut payload = BytesMut::with_capacity(
+        packets.iter().map(|p| p.len() + 4).sum()
+    );
     let mut fua_buffer = BytesMut::new();
 
     for packet in packets {

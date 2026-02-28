@@ -41,7 +41,7 @@ pub struct RTPHeader {
 
 impl RTPHeader {
     pub fn serialize(&self) -> BytesMut {
-        let mut buf = BytesMut::with_capacity(64);
+        let mut buf = BytesMut::with_capacity(1500);
 
         // first byte
         let mut b0 = (self.version << 6) | 0 as u8; // this should be set to the CSRC length, but i've removed it for now

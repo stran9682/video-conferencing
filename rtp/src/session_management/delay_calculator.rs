@@ -60,7 +60,7 @@ impl DelayCalculator {
         let node = PlayoutBufferNode {
             rtp_timestamp: rtp_header.timestamp,
             playout_time: base_playout_time,
-            coded_data: Vec::new(),
+            coded_data: Vec::with_capacity(10),
         };
         // we calculate the base playout time every packet, but if an existing playoutbuffernode with
         // the same RTP timestamp exists already, the struct is essentially discarded

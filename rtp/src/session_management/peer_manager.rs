@@ -59,7 +59,7 @@ impl Peer {
             initial_sequence_number: None,
             window: VecDeque::new(),
             min_window: u32::MAX,
-            playout_buffer: Vec::new(),
+            playout_buffer: Vec::with_capacity(100),
             swift_peer_model,
             expected_prior: 0,
             received_prior: 0,
@@ -69,11 +69,11 @@ impl Peer {
     /// Determines the min arrival time along in a window,
     /// along with incrementing the packet count and recalculating the jitter
     pub fn set_and_get_min_window(&mut self, difference: u32) -> u32 {
-        let d = difference.wrapping_sub(self.window[0]) as i32;
-        self.jitter = self.jitter + (d.abs() as u32 - self.jitter) / 16;
         self.packets_received += 1;
 
         self.window.push_front(difference);
+        let d = difference.wrapping_sub(self.window[0]) as i32;
+        self.jitter = self.jitter + (d.abs() as u32 - self.jitter) / 16;
 
         if self.window.len() > WINDOW_SIZE {
             self.window.pop_back();
@@ -147,18 +147,17 @@ impl Peer {
         self.delay_since_last_sr = Some(Instant::now());
         self.expected_prior = self.expected_num_packets();
         self.received_prior = self.packets_received
-
     }
 
-    pub fn extended_sequence_num(&self) -> u32 {
+    pub fn max_extended_sequence_num(&self) -> u32 {
         let max_sequence = self.max_sequence_number.unwrap_or(0);
         max_sequence as u32 + (65536 * self.wrap_around_count)
     }
 
     pub fn expected_num_packets(&self) -> u32 {
-        // I'm actually cheating a bit here, 
-        // according to Perkin's, should use last one sequence number, not highest one
-        self.extended_sequence_num() - self.initial_sequence_number.unwrap_or(0) as u32
+        // I'm actually cheating a bit here,
+        // according to Perkin's, you should use the last received sequence number, not highest one
+        self.max_extended_sequence_num() - self.initial_sequence_number.unwrap_or(0) as u32
     }
 
     pub fn calculate_fraction_lost(&self) -> u8 {
@@ -167,18 +166,17 @@ impl Peer {
         let lost_inteval = expected_interval as i32 - received_inteval as i32;
 
         if expected_interval == 0 || lost_inteval <= 0 {
-            return 0
-        } 
+            return 0;
+        }
 
         ((lost_inteval << 8) / expected_interval as i32) as u8
     }
-
-
 }
 
 // BAD BAD BAD!
 unsafe impl Send for Peer {}
 unsafe impl Sync for Peer {}
+
 
 pub struct PeerManager {
     peers: DashMap<u32, Peer>,
@@ -289,7 +287,7 @@ impl PeerManager {
                     reportee_ssrc: *peer.key(),
                     fraction_lost: peer.calculate_fraction_lost(),
                     total_lost: peer.expected_num_packets() - peer.packets_received,
-                    extended_sequence_number: peer.extended_sequence_num(),
+                    extended_sequence_number: peer.max_extended_sequence_num(),
                     jitter: peer.jitter,
                     last_sr_timestamp: peer.last_sr_timestamp,
                     delay_since_last_sr: match peer.delay_since_last_sr {

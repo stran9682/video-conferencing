@@ -10,7 +10,6 @@ use tokio::io;
 use tokio::net::UdpSocket;
 use tokio::time::{Duration, sleep};
 
-use crate::packets::rtcp::reception_report::ReceptionReport;
 use crate::packets::rtcp::rtcp_header::{PacketType, RTCPHeader};
 use crate::packets::rtcp::sender_report::SenderReport;
 use crate::{interop::runtime, session_management::peer_manager::PeerManager};
@@ -30,69 +29,71 @@ pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>) {
 }
 
 async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {
+
+    let mut first_packet = true;
+
     loop {
         // RTCP bandwidith = 5% bit rate of a single stream of audio or video data
         // this is usually hard coded, so no need to track it.
 
+        // TODO:
         // The interval is how long to wait between sending RTCP packets
         // When more than 25% of the participants are senders:
         // Interval = average RTCP size * total number of members / RTCP bandwidth
-        let interval = 5.0; // TODO: actually input right value
+        let mut interval = 5.0; // i'm just defaulting to 5 for now.
 
-        // choose the minimum interval (usally 5 seconds) if calculated interval is less
+        // choose the minimum interval if the calculated interval is less
         // if interval < 5.0 {
         //     interval = 5.0;
         // }
 
         // add some randomness
-        // I = (Interval * random[0.5, 1.5])
-        let random_interval = {
+        interval = {
             let mut rng = rand::rng();
             rng.random_range(0.5..=1.5) * interval
         };
 
-        // though if it's our first packet:
-        // if (this is the first RTCP packet we are sending) {
-        //     I *= 0.5
-        // }
+        // though, if it's our first packet, halve the sending time so it gets out faster
+        if first_packet {
+            interval *= 0.5;
+            first_packet = false;
+        }
 
         // wait for packet time
-        sleep(Duration::from_secs_f64(random_interval)).await;
+        sleep(Duration::from_secs_f64(interval)).await;
 
         let peers = peer_manager.get_peers();
 
-        for peer in peers {
-            let header = RTCPHeader {
-                padding: false,
-                packet_type: rtcp_header::PacketType::SenderReport,
-                count: 1,
-                length: 12,
-            };
+        // TODO: correct these attributes
+        let sender_report = SenderReport {
+            ssrc: peer_manager.local_ssrc(),
+            ntp_time: 0,
+            rtp_time: 0,
+            packet_count: peer_manager.rtp_session.get_num_packets_generated(),
+            octet_count: peer_manager.rtp_session.get_num_octets_sent(),
+            reports: peer_manager.get_reception_reports(),
+        };
 
-            let sender_report = SenderReport {
-                ssrc: peer_manager.local_ssrc(),
-                ntp_time: 0,
-                rtp_time: 0,
-                packet_count: peer_manager.rtp_session.get_num_packets_generated(),
-                octet_count: peer_manager.rtp_session.get_num_octets_sent(),
-                reports: Vec::new(),
-            };
+        let header = RTCPHeader {
+            padding: false,
+            packet_type: rtcp_header::PacketType::SenderReport,
+            count: sender_report.reports.len() as u8,
+            length: 12,
+        };
 
-            let reception_report = ReceptionReport {
-                reportee_ssrc: 0,
-                fraction_lost: 0,
-                total_lost: 0,
-                extended_sequence_number: 0,
-                jitter: 0,
-                last_sr_timestamp: 0,
-                delay_since_last_sr: 0,
-            };
+        // TODO: Get the right length
+        let mut packet = BytesMut::with_capacity(52);
+        packet.put(header.serialize());
+        packet.put(sender_report.serialize());
 
-            let mut packet = BytesMut::with_capacity(52);
+        for addr in peers {
+            let rtcp_port = addr.port() + 1;
+            let peer_ip = format!("{}:{}", addr.ip(), rtcp_port);
 
-            packet.put(header.serialize());
-            packet.put(sender_report.serialize());
-            packet.put(reception_report.serialize());
+            match socket.send_to(&packet, peer_ip).await {
+                Ok(_) => {}
+                Err(e) => eprintln!("Failed to send RTCP to {}: {}", addr, e),
+            }
         }
     }
 }
@@ -128,6 +129,10 @@ async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -
                     let last_sr_timestamp = (sender_report.ntp_time >> 16 & 0xFFFFFFFF) as u32;
 
                     peer_manager.update_last_sr_timestamp(sender_report.ssrc, last_sr_timestamp);
+
+                    // for report in sender_report.reports {
+                    //     println!("{}: Jitter {}", report.reportee_ssrc, report.jitter)
+                    // }
                 }
                 _ => {}
             }

@@ -151,7 +151,7 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
     }
     
     // MARK: Presentation Timestamp
-    let pts = sampleBuffer.presentationTimeStamp.seconds * 90000
+    let pts = sampleBuffer.presentationTimeStamp.seconds * 90_000
     let timestamp = UInt32(UInt64(pts) & 0xFFFFFFFF)
     
     // MARK: Pointers to data

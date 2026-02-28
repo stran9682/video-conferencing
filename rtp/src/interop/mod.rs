@@ -129,7 +129,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
 
     // RTCP Sender and receiver threads
     let peer_manager_clone = Arc::clone(&peer_manager);
-    runtime().spawn(async move { start_rtcp(rtcp_socket, peer_manager_clone) });
+    runtime().spawn(async move { start_rtcp(rtcp_socket, peer_manager_clone).await });
 
     // Video and Audio sender and receiver threads
     let sender_socket = Arc::clone(&socket);

@@ -64,7 +64,7 @@ pub async fn rtp_frame_sender(
         let mut nal_units = nal_units.iter().peekable();
 
         while let Some(nal_unit) = nal_units.next() {
-            // Split a NAL unit into multiple packets
+            // Split a NAL unit into multiple RTP packets
             let fragments = get_fragments(
                 nal_unit,
                 &peer_manager.rtp_session,
