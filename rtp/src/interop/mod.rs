@@ -117,7 +117,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
     // Session management objects
     // we'll be using these throughout the program.
     let rtp_session = RTPSession::new(socket.local_addr()?);
-    let peer_manager = Arc::new(PeerManager::new(rtp_session));
+    let peer_manager = Arc::new(PeerManager::new(rtp_session, stream_type));
 
     // Signaling server thread
     let peer_manager_clone = Arc::clone(&peer_manager);

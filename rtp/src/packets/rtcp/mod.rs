@@ -20,7 +20,11 @@ unsafe extern "C" {
     fn swift_send_cmclocktime() -> f64;
 }
 
-pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>, stream_type: StreamType) {
+pub async fn start_rtcp(
+    socket: UdpSocket,
+    peer_manager: Arc<PeerManager>,
+    stream_type: StreamType,
+) {
     let socket = Arc::new(socket);
 
     let socket_clone = Arc::clone(&socket);
@@ -34,12 +38,16 @@ pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>, strea
     };
 }
 
-async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>, stream_type: StreamType) {
+async fn rtcp_sender(
+    socket: Arc<UdpSocket>,
+    peer_manager: Arc<PeerManager>,
+    stream_type: StreamType,
+) {
     let mut first_packet = true;
 
     let clock_rate: f64 = match stream_type {
         StreamType::Audio => 0.,
-        StreamType::Video => 90000.
+        StreamType::Video => 90000.,
     };
 
     loop {
@@ -74,21 +82,20 @@ async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>, str
 
         let peers = peer_manager.get_peers();
 
-        // converting system time to ntp format: 
+        // converting system time to ntp format:
         // graciously from: https://tickelton.gitlab.io/articles/ntp-timestamps/
         let now = SystemTime::now();
         let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
-        
+
         let seconds = time_since_epoch.as_secs() + 2_208_988_800;
-        let fraction = ((time_since_epoch.subsec_micros() + 1) as f64 * (1u64 << 32) as f64 * 1.0e-6) as u32;
+        let fraction =
+            ((time_since_epoch.subsec_micros() + 1) as f64 * (1u64 << 32) as f64 * 1.0e-6) as u32;
         let ntp = seconds << 32 | (fraction as u64);
 
         let sender_report = SenderReport {
             ssrc: peer_manager.local_ssrc(),
             ntp_time: ntp,
-            rtp_time: unsafe {
-                (swift_send_cmclocktime() * clock_rate) as u32
-            },
+            rtp_time: unsafe { (swift_send_cmclocktime() * clock_rate) as u32 },
             packet_count: peer_manager.rtp_session.get_num_packets_generated(),
             octet_count: peer_manager.rtp_session.get_num_octets_sent(),
             reports: peer_manager.get_reception_reports(),
@@ -152,7 +159,10 @@ async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -
                     peer_manager.update_last_sr_timestamp(sender_report.ssrc, last_sr_timestamp);
 
                     for report in sender_report.reports {
-                        println!("{}: Jitter {}, {}", report.reportee_ssrc, report.jitter, report.extended_sequence_number)
+                        println!(
+                            "{}: Jitter {}, {}",
+                            report.reportee_ssrc, report.jitter, report.extended_sequence_number
+                        )
                     }
                 }
                 _ => {}

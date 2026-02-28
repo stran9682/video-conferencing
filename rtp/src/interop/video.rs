@@ -6,7 +6,7 @@ use tokio::{net::UdpSocket, sync::mpsc};
 
 use crate::packets::rtp::h264::{get_fragments, get_nal_units, rtp_to_avcc_h264};
 use crate::packets::rtp::rtp::RTPHeader;
-use crate::session_management::delay_calculator::DelayCalculator;
+use crate::session_management::delay_calculator::{ calculate_playout_time};
 use crate::session_management::peer_manager::PeerManager;
 
 //static FRAME_OUTPUT: OnceLock<Arc<PeerManager>> = OnceLock::new();
@@ -91,7 +91,6 @@ pub async fn rtp_frame_receiver(
     media_clock_rate: u32,
 ) -> io::Result<()> {
     let mut buffer = [0u8; 1500];
-    let mut delay_calculator = DelayCalculator::new(3000);
 
     // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
 
@@ -123,7 +122,7 @@ pub async fn rtp_frame_receiver(
 
         let header = RTPHeader::deserialize(&mut data);
 
-        let play_out_time = delay_calculator.calculate_playout_time(
+        let play_out_time = calculate_playout_time(
             &peer_manager,
             duration_since,
             media_clock_rate,

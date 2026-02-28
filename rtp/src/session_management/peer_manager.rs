@@ -3,8 +3,10 @@ use dashmap::DashMap;
 use std::time::Instant;
 use std::{collections::VecDeque, net::SocketAddr};
 
+use crate::interop::StreamType;
 use crate::packets::RTPSession;
 use crate::packets::rtcp::reception_report::ReceptionReport;
+use crate::session_management::delay_calculator::{DelayCalculator};
 
 static WINDOW_SIZE: usize = 50;
 static MAX_DROPOUT: u16 = 3000;
@@ -32,18 +34,44 @@ impl Fragment {
 }
 
 pub struct Peer {
+    ///  variance in arrival time
     jitter: u32,
-    max_sequence_number: Option<u16>,
-    initial_sequence_number: Option<u16>,
+
+    /// highest sequence number currently received from this peer         
+    max_sequence_number: Option<u16>,  
+
+    /// first sequence number received         
+    initial_sequence_number: Option<u16>,      
+
+    /// number of packets received from this peer, 
+    /// can differ from max-initial when packets are lost
     packets_received: u32,
+
+    /// number of times the sequence number has rolled over from max u16 value          
     wrap_around_count: u32,
+
+    /// the swift context that will be receiving and decoding the payload
     swift_peer_model: *mut std::ffi::c_void,
+
+    /// Stores the arrival time of the WINDOW_SIZE most recent packets
     window: VecDeque<u32>,
+
+    /// packet in window with the earliest arrival time
     min_window: u32,
+
+    /// buffer where frames with the same timestamp are grouped together
     playout_buffer: Vec<PlayoutBufferNode>,
+
+    /// middle 32 bytes of the NTP timestamp as received of the last SR from this peer
     last_sr_timestamp: u32,
+
+    /// Time since the last SR has been received
     delay_since_last_sr: Option<Instant>,
+
+    /// the expected number of packets received when the last SR was sent
     expected_prior: u32,
+
+    /// the received number of packets when the last SR was sent
     received_prior: u32,
 }
 
@@ -68,7 +96,7 @@ impl Peer {
 
     /// Determines the min arrival time along in a window,
     /// along with incrementing the packet count and recalculating the jitter
-    pub fn set_and_get_min_window(&mut self, difference: u32) -> u32 {
+    fn set_and_get_min_window(&mut self, difference: u32) -> u32 {
         self.packets_received += 1;
 
         self.window.push_front(difference);
@@ -142,25 +170,25 @@ impl Peer {
         }
     }
 
-    pub fn update_last_sr_timestamp(&mut self, last_sr_timestamp: u32) {
+    fn update_last_sr_timestamp(&mut self, last_sr_timestamp: u32) {
         self.last_sr_timestamp = last_sr_timestamp;
         self.delay_since_last_sr = Some(Instant::now());
         self.expected_prior = self.expected_num_packets();
         self.received_prior = self.packets_received
     }
 
-    pub fn max_extended_sequence_num(&self) -> u32 {
+    fn max_extended_sequence_num(&self) -> u32 {
         let max_sequence = self.max_sequence_number.unwrap_or(0);
         max_sequence as u32 + (65536 * self.wrap_around_count)
     }
 
-    pub fn expected_num_packets(&self) -> u32 {
+    fn expected_num_packets(&self) -> u32 {
         // I'm actually cheating a bit here,
         // according to Perkin's, you should use the last received sequence number, not highest one
         self.max_extended_sequence_num() - self.initial_sequence_number.unwrap_or(0) as u32
     }
 
-    pub fn calculate_fraction_lost(&self) -> u8 {
+    fn calculate_fraction_lost(&self) -> u8 {
         let expected_interval = self.expected_num_packets() - self.expected_prior;
         let received_inteval = self.packets_received - self.received_prior;
         let lost_inteval = expected_interval as i32 - received_inteval as i32;
@@ -185,6 +213,7 @@ pub struct PeerManager {
     // instead of blocking the receiving
     peer_addresses: DashMap<u32, SocketAddr>,
     pub rtp_session: RTPSession,
+    pub delay_calculator: DelayCalculator,
 }
 
 impl PeerManager {
@@ -196,11 +225,15 @@ impl PeerManager {
         self.rtp_session.local_addr
     }
 
-    pub fn new(rtp_session: RTPSession) -> Self {
+    pub fn new(rtp_session: RTPSession, stream_type: StreamType) -> Self {
         Self {
             peers: DashMap::new(),
             peer_addresses: DashMap::new(),
             rtp_session,
+            delay_calculator: DelayCalculator::new(match stream_type {
+                StreamType::Audio => 0,
+                StreamType::Video => 3000
+            })
         }
     }
 
@@ -223,6 +256,7 @@ impl PeerManager {
         if !peers.contains_key(&ssrc) {
             peers.insert(ssrc, Peer::new(swift_peer_model));
             self.peer_addresses.insert(ssrc, addr);
+            self.delay_calculator.add_peer(ssrc);
             true
         } else {
             false
@@ -273,7 +307,7 @@ impl PeerManager {
 
     pub fn update_last_sr_timestamp(&self, ssrc: u32, last_sr_timestamp: u32) {
         if let Some(mut peer) = self.peers.get_mut(&ssrc) {
-            peer.last_sr_timestamp = last_sr_timestamp;
+            peer.update_last_sr_timestamp(last_sr_timestamp);
         }
     }
 
