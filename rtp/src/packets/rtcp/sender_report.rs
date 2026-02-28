@@ -20,10 +20,6 @@ impl SenderReport {
         /*
          *         0                   1                   2                   3
          *         0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-         *        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         * header |V=2|P|    RC   |   PT=SR=200   |             length            |
-         *        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         *        |                         SSRC of sender                        |
          *        +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
          * sender |              NTP timestamp, most significant word             |
          * info   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -89,5 +85,10 @@ impl SenderReport {
             octet_count,
             reports,
         }
+    }
+
+    // TODO: actually calculate this the right way
+    pub fn length(&self) -> u16 {
+        24 + (self.reports.len() * 24) as u16
     }
 }

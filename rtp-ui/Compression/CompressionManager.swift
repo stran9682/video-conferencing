@@ -176,3 +176,10 @@ func swift_release_frame_buffer(_ context: UnsafeMutableRawPointer?) {
     // Release the manual retain
     let _ = Unmanaged<CMSampleBuffer>.fromOpaque(context).takeRetainedValue()
 }
+
+@_cdecl("swift_send_cmclocktime")
+func swift_send_cmclocktime() -> Float64 {
+    let now = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+    
+    return now
+}

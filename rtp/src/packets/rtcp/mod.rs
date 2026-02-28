@@ -3,6 +3,7 @@ pub mod rtcp_header;
 pub mod sender_report;
 
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use bytes::{BufMut, BytesMut};
 use rand::RngExt;
@@ -10,17 +11,22 @@ use tokio::io;
 use tokio::net::UdpSocket;
 use tokio::time::{Duration, sleep};
 
+use crate::interop::StreamType;
 use crate::packets::rtcp::rtcp_header::{PacketType, RTCPHeader};
 use crate::packets::rtcp::sender_report::SenderReport;
 use crate::{interop::runtime, session_management::peer_manager::PeerManager};
 
-pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>) {
+unsafe extern "C" {
+    fn swift_send_cmclocktime() -> f64;
+}
+
+pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>, stream_type: StreamType) {
     let socket = Arc::new(socket);
 
     let socket_clone = Arc::clone(&socket);
     let peer_manager_clone = Arc::clone(&peer_manager);
     runtime().spawn(async move {
-        rtcp_sender(socket_clone, peer_manager_clone).await;
+        rtcp_sender(socket_clone, peer_manager_clone, stream_type).await;
     });
 
     if let Err(e) = rtcp_receiver(socket, peer_manager).await {
@@ -28,9 +34,13 @@ pub async fn start_rtcp(socket: UdpSocket, peer_manager: Arc<PeerManager>) {
     };
 }
 
-async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {
-
+async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>, stream_type: StreamType) {
     let mut first_packet = true;
+
+    let clock_rate: f64 = match stream_type {
+        StreamType::Audio => 0.,
+        StreamType::Video => 90000.
+    };
 
     loop {
         // RTCP bandwidith = 5% bit rate of a single stream of audio or video data
@@ -64,11 +74,21 @@ async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {
 
         let peers = peer_manager.get_peers();
 
-        // TODO: correct these attributes
+        // converting system time to ntp format: 
+        // graciously from: https://tickelton.gitlab.io/articles/ntp-timestamps/
+        let now = SystemTime::now();
+        let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
+        
+        let seconds = time_since_epoch.as_secs() + 2_208_988_800;
+        let fraction = ((time_since_epoch.subsec_micros() + 1) as f64 * (1u64 << 32) as f64 * 1.0e-6) as u32;
+        let ntp = seconds << 32 | (fraction as u64);
+
         let sender_report = SenderReport {
             ssrc: peer_manager.local_ssrc(),
-            ntp_time: 0,
-            rtp_time: 0,
+            ntp_time: ntp,
+            rtp_time: unsafe {
+                (swift_send_cmclocktime() * clock_rate) as u32
+            },
             packet_count: peer_manager.rtp_session.get_num_packets_generated(),
             octet_count: peer_manager.rtp_session.get_num_octets_sent(),
             reports: peer_manager.get_reception_reports(),
@@ -78,11 +98,12 @@ async fn rtcp_sender(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) {
             padding: false,
             packet_type: rtcp_header::PacketType::SenderReport,
             count: sender_report.reports.len() as u8,
-            length: 12,
+            length: sender_report.length(),
         };
 
-        // TODO: Get the right length
-        let mut packet = BytesMut::with_capacity(52);
+        // TOOD: Add the CNAME
+
+        let mut packet = BytesMut::with_capacity(4 + sender_report.length() as usize);
         packet.put(header.serialize());
         packet.put(sender_report.serialize());
 
@@ -130,9 +151,9 @@ async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -
 
                     peer_manager.update_last_sr_timestamp(sender_report.ssrc, last_sr_timestamp);
 
-                    // for report in sender_report.reports {
-                    //     println!("{}: Jitter {}", report.reportee_ssrc, report.jitter)
-                    // }
+                    for report in sender_report.reports {
+                        println!("{}: Jitter {}, {}", report.reportee_ssrc, report.jitter, report.extended_sequence_number)
+                    }
                 }
                 _ => {}
             }

@@ -177,7 +177,6 @@ impl Peer {
 unsafe impl Send for Peer {}
 unsafe impl Sync for Peer {}
 
-
 pub struct PeerManager {
     peers: DashMap<u32, Peer>,
 
@@ -283,6 +282,7 @@ impl PeerManager {
             .iter()
             .map(|peer| {
                 // this isn't even funny omg
+                // I don't want to talk about this
                 ReceptionReport {
                     reportee_ssrc: *peer.key(),
                     fraction_lost: peer.calculate_fraction_lost(),
