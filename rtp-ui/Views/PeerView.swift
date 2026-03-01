@@ -17,6 +17,5 @@ struct PeerView: View, Identifiable {
     
     var body: some View {
         CameraView(image: $peerVideoModel.currentFrame)
-            .frame(width: 300, height: 300)
     }
 }

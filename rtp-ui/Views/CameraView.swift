@@ -12,18 +12,13 @@ struct CameraView: View {
     @Binding var image: CGImage?
     
     var body: some View {
-        GeometryReader { geometry in
-            if let image = image {
-                Image(decorative: image, scale: 1)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: geometry.size.width,
-                           height: geometry.size.height)
-            } else {
-                ContentUnavailableView("Camera feed interrupted", systemImage: "xmark.circle.fill")
-                                        .frame(width: geometry.size.width,
-                                               height: geometry.size.height)
-            }
+        if let image = image {
+            Image(decorative: image, scale: 1)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        } else {
+            ContentUnavailableView("Camera feed interrupted", systemImage: "xmark.circle.fill")
         }
     }
 }

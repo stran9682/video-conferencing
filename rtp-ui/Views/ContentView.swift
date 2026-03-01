@@ -20,19 +20,61 @@ struct ContentView: View {
         rust_send_video_callback(refcon)
     }
     
-    let layout = [
-       GridItem(.flexible(), spacing: 5),
-       GridItem(.flexible(), spacing: 5)
-   ]
     
     var body: some View {
-        LazyVGrid(columns: layout) {
-            CameraView(image: $viewModel.currentFrame)
-                .frame(width:300, height: 300)
-            
-            ForEach(peerVideoManager.allPeers) { peer in
-                peer
+        VStack(spacing: 0){
+            VideoGrid {
+                CameraView(image: $viewModel.currentFrame)
+                
+                ForEach(peerVideoManager.allPeers) { peer in
+                    peer
+                }
             }
+            .background(Color.black)
+            
+            UIView()
+        }
+    }
+}
+
+struct VideoGrid: Layout {
+    // calculate and report how large a layout container is
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        return proposal.replacingUnspecifiedDimensions()
+    }
+    
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        let count = subviews.count
+        guard count > 0 else { return }
+
+        let columns = Int(ceil(sqrt(Double(count))))
+        let rows = Int(ceil(Double(count) / Double(columns)))
+
+        let width = bounds.width / CGFloat(columns)
+        let height = bounds.height / CGFloat(rows)
+
+        for (index, subview) in subviews.enumerated() {
+            let column = index % columns
+            let row = index / columns
+
+            let x = bounds.minX + (CGFloat(column) * width)
+            let y = bounds.minY + (CGFloat(row) * height)
+
+            // Place the subview
+            subview.place(
+                at: CGPoint(x: x, y: y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: width, height: height)
+            )
         }
     }
 }
