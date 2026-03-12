@@ -16,7 +16,7 @@ class CompressionManager {
     var sps: [UInt8]?
     
     init () {
-        let videoEncoderSpecification = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true as CFBoolean] as CFDictionary
+        //let videoEncoderSpecification = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true as CFBoolean] as CFDictionary
         
         VTCompressionSessionCreate(allocator: kCFAllocatorDefault,
                                          width: Int32(1280),

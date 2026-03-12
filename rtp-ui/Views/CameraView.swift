@@ -19,6 +19,7 @@ struct CameraView: View {
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         } else {
             ContentUnavailableView("Camera feed interrupted", systemImage: "xmark.circle.fill")
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         }
     }
 }

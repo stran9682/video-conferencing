@@ -37,6 +37,10 @@ struct ContentView: View {
     }
 }
 
+#Preview {
+    ContentView()
+}
+
 struct VideoGrid: Layout {
     // calculate and report how large a layout container is
     func sizeThatFits(

@@ -18,21 +18,18 @@ class CameraManager: NSObject {
     private let captureSession = AVCaptureSession()
     
     //  describes the media input from a capture device to a capture session
-    private var deviceInput : AVCaptureDeviceInput?
+    //  private var deviceInput : AVCaptureDeviceInput?
     
     //  object used to have access to video frames for processing
     private var videoOutput: AVCaptureVideoDataOutput?
-    private var audioOutput: AVCaptureAudioDataOutput?
     
     //  object that represents the hardware or virtual capture device
     //  that can provide one or more streams of media of a particular type
     private let systemPreferedCamera = AVCaptureDevice.default(for: .video)
-    private let systemPreferedAudio = AVCaptureDevice.default(for: .audio)
     
     //  the queue on which the AVCaptureVideoDataOutputSampleBufferDelegate callbacks should be invoked.
     //  It is mandatory to use a serial dispatch queue to guarantee that video frames will be delivered in order
     private var sessionQueue = DispatchQueue(label: "video.preview.session")
-    private var audioSessionQueue = DispatchQueue(label: "audio.preview.session")
     
     private var addToPreviewStream: ((CGImage) -> Void)?
     
@@ -67,11 +64,8 @@ class CameraManager: NSObject {
         // if the selected camera is available,
         // and if can take the input through the AVCaptureDeviceInput object
         guard await requestAccess(type: .video),
-              await requestAccess(type: .audio),
               let systemPreferedCamera,
-              let deviceInput = try? AVCaptureDeviceInput(device: systemPreferedCamera),
-              let systemPreferedAudio,
-              let deviceMic = try? AVCaptureDeviceInput(device: systemPreferedAudio)
+              let deviceInput = try? AVCaptureDeviceInput(device: systemPreferedCamera)
         else { return }
               
         // Start the configuration,
@@ -104,65 +98,26 @@ class CameraManager: NSObject {
             return
         }
         
-        
-        // MARK: Audio Config Setup
-        
-        audioOutput = AVCaptureAudioDataOutput()
-        audioOutput!.setSampleBufferDelegate(self, queue: audioSessionQueue)
-        
-        guard captureSession.canAddInput(deviceMic) else {
-            print("Unable to add device input to capture session.")
-            return
-        }
-        
-        guard captureSession.canAddOutput(audioOutput!) else {
-            print("Unable to add audio output to capture session.")
-            return
-        }
-        
         // Adds the input and the output to the AVCaptureSession
         captureSession.addInput(deviceInput)
         captureSession.addOutput(videoOutput!)
-        captureSession.addInput(deviceMic)
-        captureSession.addOutput(audioOutput!)
     }
     
     //  will only be responsible for starting the camera session.
     private func startSession() async {
         captureSession.startRunning()
     }
-    
-    private func requestAccess(type : AVMediaType) async -> Bool {
-        
-        // Determine if the user previously authorized media access.
-        let status = AVCaptureDevice.authorizationStatus(for: type)
-        
-        // If the system hasn't determined the user's authorization status,
-        // explicitly prompt them for approval.
-        var isAuthorized = status == .authorized
-        
-        if status == .notDetermined {
-            isAuthorized = await AVCaptureDevice.requestAccess(for: type)
-        }
-        
-        return isAuthorized
-    }
 }
 
-extension CameraManager : AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate  { // honestly what
+extension CameraManager : AVCaptureVideoDataOutputSampleBufferDelegate { // honestly what
     
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         
-        if output == self.videoOutput! {
+        if output == self.videoOutput {
             handleFrame(sampleBuffer: sampleBuffer)
         }
-        
-        if output == self.audioOutput! {
-            // TODO: Stuff here of course
-        }
-        
     }
     
     func handleFrame(sampleBuffer: CMSampleBuffer) {
@@ -179,6 +134,21 @@ extension CameraManager : AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptur
         let presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         
         session.compressFrame(pixelBuffer: pixelBuffer, presentationTimeStamp: presentationTimeStamp)
-    
     }
+}
+
+public func requestAccess(type : AVMediaType) async -> Bool {
+    
+    // Determine if the user previously authorized media access.
+    let status = AVCaptureDevice.authorizationStatus(for: type)
+    
+    // If the system hasn't determined the user's authorization status,
+    // explicitly prompt them for approval.
+    var isAuthorized = status == .authorized
+    
+    if status == .notDetermined {
+        isAuthorized = await AVCaptureDevice.requestAccess(for: type)
+    }
+    
+    return isAuthorized
 }

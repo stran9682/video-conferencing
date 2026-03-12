@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		680180DB2F6324090028D650 /* Copus in Frameworks */ = {isa = PBXBuildFile; productRef = 680180DA2F6324090028D650 /* Copus */; };
+		680180DD2F6324090028D650 /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = 680180DC2F6324090028D650 /* Opus */; };
 		68ECEF612F3134410072E610 /* rtp-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 68ECEF5E2F3132550072E610 /* rtp-macos.a */; };
 /* End PBXBuildFile section */
 
@@ -32,6 +34,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				68ECEF612F3134410072E610 /* rtp-macos.a in Frameworks */,
+				680180DB2F6324090028D650 /* Copus in Frameworks */,
+				680180DD2F6324090028D650 /* Opus in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -95,6 +99,8 @@
 			);
 			name = "rtp-ui";
 			packageProductDependencies = (
+				680180DA2F6324090028D650 /* Copus */,
+				680180DC2F6324090028D650 /* Opus */,
 			);
 			productName = "rtp-ui";
 			productReference = 686B783E2F0E3150006DF34C /* rtp-ui.app */;
@@ -124,6 +130,9 @@
 			);
 			mainGroup = 686B78352F0E3150006DF34C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				680180D92F6324090028D650 /* XCRemoteSwiftPackageReference "swift-opus" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 686B783F2F0E3150006DF34C /* Products */;
 			projectDirPath = "";
@@ -395,6 +404,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		680180D92F6324090028D650 /* XCRemoteSwiftPackageReference "swift-opus" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/alta/swift-opus";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.0.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		680180DA2F6324090028D650 /* Copus */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 680180D92F6324090028D650 /* XCRemoteSwiftPackageReference "swift-opus" */;
+			productName = Copus;
+		};
+		680180DC2F6324090028D650 /* Opus */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 680180D92F6324090028D650 /* XCRemoteSwiftPackageReference "swift-opus" */;
+			productName = Opus;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 686B78362F0E3150006DF34C /* Project object */;
 }

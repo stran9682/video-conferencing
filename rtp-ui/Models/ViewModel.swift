@@ -14,8 +14,11 @@ class ViewModel {
     var currentFrame: CGImage?
     
     private let cameraManager = CameraManager()
+    private let audioManager = AudioManager()
     
     init() {
+        audioManager.startRecording()
+        
         Task {
             await handleCameraPreviews()
         }

@@ -11,7 +11,7 @@ pub mod rtp;
 pub struct RTPSession {
     current_sequence_num: AtomicU16,
     packets_generated: AtomicU32,
-    octets_sent: AtomicU32,
+    octets_sent: AtomicU32, // this is going to be same for every peer
 
     pub ssrc: u32,
     pub local_addr: SocketAddr,
