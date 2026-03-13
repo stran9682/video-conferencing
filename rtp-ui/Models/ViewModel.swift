@@ -8,6 +8,7 @@
 import Foundation
 import CoreImage
 import Observation
+import RTPmacos
 
 @Observable
 class ViewModel {
@@ -18,6 +19,7 @@ class ViewModel {
     
     init() {
         audioManager.startRecording()
+        rust_send_audio_manger_context(Unmanaged.passUnretained(audioManager).toOpaque())
         
         Task {
             await handleCameraPreviews()
