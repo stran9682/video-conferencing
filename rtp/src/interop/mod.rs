@@ -119,6 +119,8 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
     let rtp_session = RTPSession::new(socket.local_addr()?);
     let peer_manager = Arc::new(PeerManager::new(rtp_session, stream_type));
 
+    println!("{:?}, {}", stream_type, peer_manager.rtp_session.ssrc);
+
     // Signaling server thread
     let peer_manager_clone = Arc::clone(&peer_manager);
     runtime().spawn(async move {

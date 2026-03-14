@@ -18,8 +18,9 @@ class ViewModel {
     private let audioManager = AudioManager()
     
     init() {
-        audioManager.startRecording()
         rust_send_audio_manger_context(Unmanaged.passUnretained(audioManager).toOpaque())
+        
+        audioManager.startRecording()
         
         Task {
             await handleCameraPreviews()

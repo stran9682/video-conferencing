@@ -50,14 +50,14 @@ unsafe extern "C" {
     ) -> *mut c_void;
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
 enum StreamTypeWithArgs {
     Video { pps: Vec<u8>, sps: Vec<u8> },
     Audio { sample_rate: f64, channels: u32 },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct ServerArgs {
     signaling_address: String,
     local_rtp_address: String,
@@ -185,10 +185,10 @@ fn spawn_signaling_connection(stream_type: StreamType) {
     };
 
     runtime().spawn(async move {
-        println!("Making a request!");
+        println!("{:?} Making a request!", stream_type);
 
         if let Err(e) = connect_to_signaling_server(host_addr_str, stream_type).await {
-            eprintln!("Failed to connect to signaling server, {}", e)
+            eprintln!("{:?} Failed to connect to signaling server, {}", stream_type, e)
         }
 
         // TODO: If the connection fails when you update your specs, try another peer
@@ -215,6 +215,8 @@ pub async fn run_signaling_server(
         StreamType::Audio => AUDIO_PEERS.set(Arc::clone(&peer_manager)),
         StreamType::Video => FRAME_PEERS.set(Arc::clone(&peer_manager)),
     };
+
+    println!("Peer manager of type, {:?}, has been set", stream_type);
 
     // return early. Do NOT run another instance of the server!
     if res.is_err() {
@@ -275,6 +277,7 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
 
     socket.write_all(&response.as_bytes()).await?;
 
+    println!("Handling a request");
     handle_request(&request).await?;
 
     Ok(())
@@ -306,6 +309,10 @@ pub async fn connect_to_signaling_server(
 
     println!("{}", addresses.len());
     for signaling_addr in &addresses {
+        if *signaling_addr == listener().await.local_addr().unwrap().to_string() {
+            continue;
+        }
+
         if let Err(e) = add_peers(
             signaling_addr,
             &request,
@@ -347,6 +354,7 @@ async fn add_peers(
         )
     })?;
 
+    println!("Adding a peer!");
     handle_request(&response).await?;
 
     let signaling_addr: SocketAddr = signaling_addr
@@ -364,15 +372,8 @@ async fn add_peers(
 
 async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
     let peer_manager = match media_type {
-        StreamTypeWithArgs::Audio { sample_rate: _, channels: _ } => AUDIO_PEERS.get(),
-        StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.get(),
-    };
-
-    let Some(peer_manager) = peer_manager else {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "Peer manager not initialized",
-        ));
+        StreamTypeWithArgs::Audio { sample_rate: _, channels: _ } => AUDIO_PEERS.wait(),
+        StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.wait(),
     };
 
     let Ok(signaling_addr) = listener().await.local_addr() else {
@@ -410,17 +411,12 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
 async fn handle_request(request: &ServerArgs) -> io::Result<()> {
     let (specifications, peer_manager) = match request.stream_type {
         StreamTypeWithArgs::Video { pps: _, sps: _ } => {
-            (PEER_SPECIFICATIONS.get(), FRAME_PEERS.get())
+            (PEER_SPECIFICATIONS.get(), FRAME_PEERS.wait())
         }
-        StreamTypeWithArgs::Audio { sample_rate: _, channels: _ } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.get()),
+        StreamTypeWithArgs::Audio { sample_rate: _, channels: _ } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.wait()),
     };
 
-    let Some(peer_manager) = peer_manager else {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "Peer manager not initialized",
-        ));
-    };
+    println!("{:?}", request);
 
     let Some(specifications) = specifications else {
         return Err(io::Error::new(
@@ -439,12 +435,7 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
     match &request.stream_type {
         StreamTypeWithArgs::Audio { sample_rate, channels } => {
             // TODO: We'll get there!
-            let Some(audio_manager_context) = AUDIO_MANAGER_CONTEXT.get() else {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Peer audio manager likely not initialized",
-                ));
-            };
+            let audio_manager_context = AUDIO_MANAGER_CONTEXT.wait();
 
             let swift_peer_model = unsafe {
                 swift_receive_audio_config(audio_manager_context.context, *sample_rate, *channels, request.ssrc)
@@ -453,12 +444,7 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
             peer_manager.add_peer(request.ssrc, media_addr, swift_peer_model);
         }
         StreamTypeWithArgs::Video { pps, sps } => {
-            let Some(context) = PEER_VIDEO_CONTEXT.get() else {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Peer video manager likely not initialized",
-                ));
-            };
+            let context = PEER_VIDEO_CONTEXT.wait();
 
             let swift_peer_model = unsafe {
                 swift_receive_pps_sps(

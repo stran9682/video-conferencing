@@ -25,6 +25,7 @@ class AudioManager {
     init() {
         do {
             run_runtime_server(StreamType(0))
+            rust_send_opus_config(OPUS_ENCODER_SAMPLE_RATE, AUDIO_OUTPUT_CHANNELS)
             
             audioEngine = AVAudioEngine()
             inputNode = audioEngine.inputNode
@@ -47,8 +48,6 @@ class AudioManager {
         inputNode.installTap(onBus: 0, bufferSize: desiredBufferSize, format: inputFormat) { [weak self] buffer, _ in
             self?.processBuffer(buffer)
         }
-        
-        rust_send_opus_config(OPUS_ENCODER_SAMPLE_RATE, AUDIO_OUTPUT_CHANNELS)
     }
     
     private func processBuffer(_ buffer: AVAudioPCMBuffer) {
@@ -112,10 +111,13 @@ class ParticipantAudio {
         audioEngine.attach(playerNode)
         audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: outputFormat)
 
+        
     }
     
     func play(encodedData: Data) {
         guard let decoder else { return }
+        
+        playerNode.play()
         
         do {
             let decodedBuffer = try decoder.decode(encodedData)
@@ -125,6 +127,5 @@ class ParticipantAudio {
         catch {
             print("Failed to decode buffer: \(error.localizedDescription)")
         }
-        
     }
 }
