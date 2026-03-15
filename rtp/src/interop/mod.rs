@@ -1,8 +1,10 @@
 pub mod audio;
 pub mod video;
 
+use bytes::Bytes;
 use local_ip_address::local_ip;
 
+use core::slice;
 use std::{
     io::{self},
     sync::{Arc, OnceLock},
@@ -12,7 +14,7 @@ use tokio::{net::UdpSocket, runtime::Runtime, sync::mpsc};
 
 use crate::{
     interop::{
-        audio::{EncodedAudio, rtp_audio_receiver},
+        audio::{EncodedAudio, rtp_audio_receiver, rtp_audio_sender},
         video::{EncodedFrame, ReleaseCallback, rtp_frame_receiver, rtp_frame_sender},
     },
     packets::{RTPSession, rtcp::start_rtcp},
@@ -38,6 +40,35 @@ pub fn runtime() -> &'static Runtime {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn rust_send_audio_sample(data: *const u8, len: usize, timestamp: u32) -> bool {
+    let tx = match AUDIO_TX.get() {
+        Some(tx) => tx,
+        None => {
+            eprintln!("Audio stream not initialized");
+            return false;
+        }
+    };
+
+    // Okay with copying here, we'd copy anyways swift side creating a pointer.
+    let slice = unsafe { slice::from_raw_parts(data, len) };
+    let data = Bytes::copy_from_slice(slice);
+
+    let sample = EncodedAudio { data, timestamp };
+
+    match tx.try_send(sample) {
+        Ok(_) => true,
+        Err(mpsc::error::TrySendError::Full(_)) => {
+            eprintln!("Warning: frame dropped - channel full");
+            false
+        }
+        Err(mpsc::error::TrySendError::Closed(_)) => {
+            eprintln!("Error: channel closed");
+            false
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn rust_send_frame(
     data: *const u8,
     len: usize,
@@ -53,7 +84,7 @@ pub extern "C" fn rust_send_frame(
         }
     };
 
-    // zero copy?
+    // zero copy
     let frame = EncodedFrame {
         data,
         len,
@@ -153,15 +184,19 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
         }
 
         StreamType::Audio => {
-            let (tx, _rx) = mpsc::channel::<EncodedAudio>(CHANNEL_BUFFER_SIZE);
+            let (tx, rx) = mpsc::channel::<EncodedAudio>(CHANNEL_BUFFER_SIZE);
 
             AUDIO_TX.set(tx).map_err(|_| {
                 eprintln!("{:?} stream already initialized", stream_type);
                 return io::Error::new(io::ErrorKind::AlreadyExists, "audio stream already in use");
             })?;
 
-            // TODO : spawn an audio runtime.
-            rtp_audio_receiver().await
+            runtime().spawn(async move {
+                rtp_audio_sender(sender_socket, sender_peers, rx).await;
+            });
+
+            // TODO:
+            rtp_audio_receiver(socket, peer_manager, 48_000).await
         }
     }
 }

@@ -6,7 +6,7 @@ use tokio::{net::UdpSocket, sync::mpsc};
 
 use crate::packets::rtp::h264::{get_fragments, get_nal_units, rtp_to_avcc_h264};
 use crate::packets::rtp::rtp::RTPHeader;
-use crate::session_management::delay_calculator::{ calculate_playout_time};
+use crate::session_management::delay_calculator::calculate_playout_time;
 use crate::session_management::peer_manager::PeerManager;
 
 //static FRAME_OUTPUT: OnceLock<Arc<PeerManager>> = OnceLock::new();
@@ -46,7 +46,7 @@ pub async fn rtp_frame_sender(
     loop {
         let frame = match rx.recv().await {
             Some(f) => f,
-            None => break,
+            None => continue,
         };
 
         let peers = peer_manager.get_peers();
@@ -131,8 +131,8 @@ pub async fn rtp_frame_receiver(
         );
 
         // Send to swift
-        if let Some(play_out_time) = play_out_time {
-            let Some(frame) = peer_manager.pop_node(header.ssrc) else {
+        if let Some(play_out_time) = play_out_time && header.marker {
+            let Some(frame) = peer_manager.pop_node(header.ssrc, header.timestamp) else {
                 continue;
             };
 

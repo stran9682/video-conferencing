@@ -5,7 +5,10 @@ use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
-    collections::HashSet, ffi::c_void, net::SocketAddr, sync::{Arc, OnceLock}
+    collections::HashSet,
+    ffi::c_void,
+    net::SocketAddr,
+    sync::{Arc, OnceLock},
 };
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -81,13 +84,13 @@ pub struct H264Args {
 
 pub struct OpusArgs {
     sample_rate: f64,
-    channels: u32
+    channels: u32,
 }
 
 pub struct PeerSpecifications {
     peer_signaling_addresses: DashSet<SocketAddr>,
     self_h264_args: Mutex<Option<H264Args>>,
-    self_opus_args: Mutex<Option<OpusArgs>>
+    self_opus_args: Mutex<Option<OpusArgs>>,
 }
 
 impl PeerSpecifications {
@@ -104,7 +107,7 @@ impl PeerSpecifications {
         *args = Some(opus_args);
     }
 
-    pub fn set_h264_args(&self, h264_args: H264Args){
+    pub fn set_h264_args(&self, h264_args: H264Args) {
         let mut args = self.self_h264_args.blocking_lock();
         *args = Some(h264_args);
     }
@@ -147,13 +150,13 @@ pub extern "C" fn rust_send_audio_manger_context(context: *mut c_void) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_send_opus_config(
-    sample_rate: f64,
-    channels: u32,
-) {
+pub extern "C" fn rust_send_opus_config(sample_rate: f64, channels: u32) {
     let peer_specifications = PEER_SPECIFICATIONS.get_or_init(|| PeerSpecifications::new());
-    peer_specifications.set_opus_args(OpusArgs { sample_rate, channels });
-    
+    peer_specifications.set_opus_args(OpusArgs {
+        sample_rate,
+        channels,
+    });
+
     spawn_signaling_connection(StreamType::Audio);
 }
 
@@ -188,7 +191,10 @@ fn spawn_signaling_connection(stream_type: StreamType) {
         println!("{:?} Making a request!", stream_type);
 
         if let Err(e) = connect_to_signaling_server(host_addr_str, stream_type).await {
-            eprintln!("{:?} Failed to connect to signaling server, {}", stream_type, e)
+            eprintln!(
+                "{:?} Failed to connect to signaling server, {}",
+                stream_type, e
+            )
         }
 
         // TODO: If the connection fails when you update your specs, try another peer
@@ -267,7 +273,10 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
     })?;
 
     let request_stream_type = match request.stream_type {
-        StreamTypeWithArgs::Audio { sample_rate: _, channels: _ } => StreamType::Audio,
+        StreamTypeWithArgs::Audio {
+            sample_rate: _,
+            channels: _,
+        } => StreamType::Audio,
         StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
     };
 
@@ -372,7 +381,10 @@ async fn add_peers(
 
 async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
     let peer_manager = match media_type {
-        StreamTypeWithArgs::Audio { sample_rate: _, channels: _ } => AUDIO_PEERS.wait(),
+        StreamTypeWithArgs::Audio {
+            sample_rate: _,
+            channels: _,
+        } => AUDIO_PEERS.wait(),
         StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.wait(),
     };
 
@@ -413,7 +425,10 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
         StreamTypeWithArgs::Video { pps: _, sps: _ } => {
             (PEER_SPECIFICATIONS.get(), FRAME_PEERS.wait())
         }
-        StreamTypeWithArgs::Audio { sample_rate: _, channels: _ } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.wait()),
+        StreamTypeWithArgs::Audio {
+            sample_rate: _,
+            channels: _,
+        } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.wait()),
     };
 
     println!("{:?}", request);
@@ -433,12 +448,20 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     match &request.stream_type {
-        StreamTypeWithArgs::Audio { sample_rate, channels } => {
+        StreamTypeWithArgs::Audio {
+            sample_rate,
+            channels,
+        } => {
             // TODO: We'll get there!
             let audio_manager_context = AUDIO_MANAGER_CONTEXT.wait();
 
             let swift_peer_model = unsafe {
-                swift_receive_audio_config(audio_manager_context.context, *sample_rate, *channels, request.ssrc)
+                swift_receive_audio_config(
+                    audio_manager_context.context,
+                    *sample_rate,
+                    *channels,
+                    request.ssrc,
+                )
             };
 
             peer_manager.add_peer(request.ssrc, media_addr, swift_peer_model);
@@ -480,22 +503,22 @@ async fn get_specifications(stream_type: StreamType) -> io::Result<StreamTypeWit
     };
 
     let response_args = match stream_type {
-        StreamType::Audio =>  {
+        StreamType::Audio => {
             let Some(ref opus_args) = *specifications.self_opus_args.lock().await else {
-                return  Err(io::Error::new(
+                return Err(io::Error::new(
                     io::ErrorKind::NotFound,
-                    "H264 args are not initialized",
+                    "Opus args are not initialized",
                 ));
             };
 
             StreamTypeWithArgs::Audio {
                 sample_rate: opus_args.sample_rate,
-                channels: opus_args.channels
+                channels: opus_args.channels,
             }
         }
-        StreamType::Video =>  {
+        StreamType::Video => {
             let Some(ref h264_args) = *specifications.self_h264_args.lock().await else {
-                return  Err(io::Error::new(
+                return Err(io::Error::new(
                     io::ErrorKind::NotFound,
                     "H264 args are not initialized",
                 ));
@@ -505,7 +528,7 @@ async fn get_specifications(stream_type: StreamType) -> io::Result<StreamTypeWit
                 pps: h264_args.pps.to_vec(),
                 sps: h264_args.sps.to_vec(),
             }
-        },
+        }
     };
 
     Ok(response_args)

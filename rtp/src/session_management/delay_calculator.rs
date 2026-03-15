@@ -15,7 +15,7 @@ pub struct PeerDelay {
     skew_threshold: i32,
 }
 
-impl PeerDelay  {
+impl PeerDelay {
     pub fn new(skew_threshold: i32) -> Self {
         Self {
             active_delay: 0,
@@ -51,23 +51,25 @@ impl PeerDelay  {
 
 pub struct DelayCalculator {
     skew_threshold: i32,
-    peer_delay: DashMap<u32, PeerDelay>
+    peer_delay: DashMap<u32, PeerDelay>,
 }
 
 impl DelayCalculator {
-    pub fn new (skew_threshold: i32) -> Self {
-        DelayCalculator { 
+    pub fn new(skew_threshold: i32) -> Self {
+        DelayCalculator {
             peer_delay: DashMap::new(),
             skew_threshold,
         }
     }
-    
+
     pub fn add_peer(&self, ssrc: u32) {
-        self.peer_delay.insert(ssrc, PeerDelay::new(self.skew_threshold));
+        self.peer_delay
+            .insert(ssrc, PeerDelay::new(self.skew_threshold));
     }
 
     pub fn adjust_skew(&self, ssrc: u32, difference: u32) -> i32 {
-        let adjustment = self.peer_delay
+        let adjustment = self
+            .peer_delay
             .get_mut(&ssrc)
             .map_or(0, |mut peer| peer.adjust_skew(difference));
 
@@ -120,11 +122,9 @@ pub fn calculate_playout_time(
     peer_manager.add_playout_node_to_peer(rtp_header.ssrc, node, fragment);
 
     // TODO: Something with this!!
-    let adjustment = peer_manager.delay_calculator.adjust_skew(rtp_header.ssrc, difference);
+    let adjustment = peer_manager
+        .delay_calculator
+        .adjust_skew(rtp_header.ssrc, difference);
 
-    if rtp_header.marker {
-        Some(base_playout_time)
-    } else {
-        None
-    }
+    Some(base_playout_time)
 }

@@ -6,7 +6,7 @@ use std::{collections::VecDeque, net::SocketAddr};
 use crate::interop::StreamType;
 use crate::packets::RTPSession;
 use crate::packets::rtcp::reception_report::ReceptionReport;
-use crate::session_management::delay_calculator::{DelayCalculator};
+use crate::session_management::delay_calculator::DelayCalculator;
 
 static WINDOW_SIZE: usize = 50;
 static MAX_DROPOUT: u16 = 3000;
@@ -38,12 +38,12 @@ pub struct Peer {
     jitter: u32,
 
     /// highest sequence number currently received from this peer         
-    max_sequence_number: Option<u16>,  
+    max_sequence_number: Option<u16>,
 
     /// first sequence number received         
-    initial_sequence_number: Option<u16>,      
+    initial_sequence_number: Option<u16>,
 
-    /// number of packets received from this peer, 
+    /// number of packets received from this peer,
     /// can differ from max-initial when packets are lost
     packets_received: u32,
 
@@ -232,8 +232,8 @@ impl PeerManager {
             rtp_session,
             delay_calculator: DelayCalculator::new(match stream_type {
                 StreamType::Audio => 0,
-                StreamType::Video => 3000
-            })
+                StreamType::Video => 3000,
+            }),
         }
     }
 
@@ -295,12 +295,14 @@ impl PeerManager {
             .collect()
     }
 
-    pub fn pop_node(&self, ssrc: u32) -> Option<PlayoutBufferNode> {
+    pub fn pop_node(&self, ssrc: u32, timestamp: u32) -> Option<PlayoutBufferNode> {
         let mut peer = self.peers.get_mut(&ssrc)?;
 
-        let Some(node) = peer.playout_buffer.pop() else {
+        let Some(index) = peer.playout_buffer.iter().position(|x| x.rtp_timestamp == timestamp) else {
             return None;
         };
+
+        let node  = peer.playout_buffer.remove(index);
 
         Some(node)
     }

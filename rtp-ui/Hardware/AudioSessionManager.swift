@@ -56,6 +56,7 @@ class AudioManager {
         do {
             var encodedData = Data(count: Int(buffer.frameLength) * MemoryLayout<Float32>.size)
             _ = try encoder.encode(buffer, to: &encodedData)    // this might be blocking, but anything is better than using AVAudioConverter 🤮
+                        
             
             // TODO: Send to RUST
         } catch {
