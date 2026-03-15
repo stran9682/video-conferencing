@@ -1,9 +1,24 @@
-use std::{io, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    io,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{net::UdpSocket, sync::mpsc};
 
-use crate::{packets::rtp::rtp::RTPHeader, session_management::{delay_calculator::calculate_playout_time, peer_manager::PeerManager}};
+use crate::{
+    packets::rtp::rtp::RTPHeader,
+    session_management::{delay_calculator::calculate_playout_time, peer_manager::PeerManager},
+};
+
+unsafe extern "C" {
+    fn swift_receive_sample(
+        context: *mut std::ffi::c_void,
+        audioData: *const u8,
+        length: usize
+    );
+}
 
 pub struct EncodedAudio {
     pub data: Bytes,
@@ -21,20 +36,28 @@ pub async fn rtp_audio_sender(
             None => continue,
         };
 
+        //println!("Received an audio sample");
+
         let peers = peer_manager.get_peers();
 
+        //println!("Number of peers: {}", peers.len());
+
         if peers.is_empty() {
+            //println!("-> No peers");
             continue;
         }
 
-        let header = peer_manager.rtp_session.get_packet(
-            false, 
-            sample.timestamp, 
-            sample.data.len() as u32
-        );
+        let header =
+            peer_manager
+                .rtp_session
+                .get_packet(false, sample.timestamp, sample.data.len() as u32);
+
+        //println!("Created a packet");
 
         let mut packet = header.serialize();
         packet.put(sample.data);
+
+        //println!("packet size: {:?}", packet.len());
 
         for addr in peers.iter() {
             match socket.send_to(&packet, addr).await {
@@ -42,6 +65,8 @@ pub async fn rtp_audio_sender(
                 Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
             }
         }
+
+        //println!("Sent a packet")
     }
 }
 
@@ -54,6 +79,8 @@ pub async fn rtp_audio_receiver(
 
     loop {
         let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
+
+        //println!("Got a packet!");
 
         let now = SystemTime::now();
 
@@ -90,6 +117,14 @@ pub async fn rtp_audio_receiver(
             continue; // in case that the UI hasn't sent back the pointer to stream, just ignore
         };
 
-        // TODO: send back to swift
+        let mut audio_data = BytesMut::new();
+
+        for data in sample.coded_data {
+            audio_data.put(data.data);
+        }
+
+        unsafe {
+            swift_receive_sample(context, audio_data.as_ptr() as *const u8, audio_data.len());
+        }
     }
 }

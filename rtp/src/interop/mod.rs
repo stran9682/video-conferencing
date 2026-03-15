@@ -181,7 +181,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
             });
 
             rtp_frame_receiver(socket, peer_manager, 90_000).await
-        }
+        },
 
         StreamType::Audio => {
             let (tx, rx) = mpsc::channel::<EncodedAudio>(CHANNEL_BUFFER_SIZE);

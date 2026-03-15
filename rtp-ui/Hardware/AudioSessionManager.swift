@@ -25,7 +25,6 @@ class AudioManager {
     init() {
         do {
             run_runtime_server(StreamType(0))
-            rust_send_opus_config(OPUS_ENCODER_SAMPLE_RATE, AUDIO_OUTPUT_CHANNELS)
             
             audioEngine = AVAudioEngine()
             inputNode = audioEngine.inputNode
@@ -48,6 +47,8 @@ class AudioManager {
         inputNode.installTap(onBus: 0, bufferSize: desiredBufferSize, format: inputFormat) { [weak self] buffer, _ in
             self?.processBuffer(buffer)
         }
+        
+        rust_send_opus_config(OPUS_ENCODER_SAMPLE_RATE, AUDIO_OUTPUT_CHANNELS)
     }
     
     private func processBuffer(_ buffer: AVAudioPCMBuffer) {
@@ -55,10 +56,13 @@ class AudioManager {
         
         do {
             var encodedData = Data(count: Int(buffer.frameLength) * MemoryLayout<Float32>.size)
-            _ = try encoder.encode(buffer, to: &encodedData)    // this might be blocking, but anything is better than using AVAudioConverter 🤮
+            _ = try encoder.encode(buffer, to: &encodedData)
                         
-            
             // TODO: Send to RUST
+            let pts = CMClockGetTime(CMClockGetHostTimeClock()).seconds * 48_000
+            let timestamp = UInt32(UInt64(pts) & 0xFFFFFFFF)
+            
+            rust_send_audio_sample([UInt8](encodedData), UInt(encodedData.count), timestamp)
         } catch {
             print("Failed to encode buffer: \(error.localizedDescription)")
         }
@@ -67,14 +71,41 @@ class AudioManager {
     // TODO: Make this accessible to RUST and send a pointer to model
     func addParticipant(ssrc: UInt32, sample_rate: Float64, channels: UInt32) -> ParticipantAudio{
         let outputFormat = AVAudioFormat(standardFormatWithSampleRate: sample_rate, channels: channels)!
+        let playerNode = AVAudioPlayerNode()
         
-        let participantAudio = ParticipantAudio(outputFormat: outputFormat)
-        participantAudio.register(audioEngine: audioEngine, outputFormat: outputFormat)
+        print("Adding participant — sample_rate: \(sample_rate), channels: \(channels), ssrc: \(ssrc)")
+        let participantAudio = ParticipantAudio(outputFormat: outputFormat, playerNode: playerNode)
         
-        participantNodes[ssrc] = participantAudio
+        DispatchQueue.main.async {
+            self.audioEngine.stop()
+            
+            self.audioEngine.attach(playerNode)
+            self.audioEngine.connect(playerNode, to: self.audioEngine.mainMixerNode, format: outputFormat)
+            
+            playerNode.play()
+            self.participantNodes[ssrc] = participantAudio
+            
+            self.audioEngine.prepare()                                       // 2. Re-prepare
+            try? self.audioEngine.start()
+        }
         
         return participantAudio
     }
+}
+
+@_cdecl("swift_receive_sample")
+public func swift_receive_sample(
+    _ context: UnsafeMutableRawPointer?,
+    _ audioData: UnsafePointer<UInt8>?,
+    _ length: UInt
+) {
+    guard let context, let audioData else { return }
+    
+    let participantAudio = Unmanaged<ParticipantAudio>.fromOpaque(context).takeUnretainedValue()
+    
+    let compressedData = Data(bytes: audioData, count: Int(length))
+    
+    participantAudio.play(encodedData: compressedData)
 }
 
 @_cdecl("swift_receive_audio_config")
@@ -95,38 +126,35 @@ public func swift_receive_audio_config(
 
 class ParticipantAudio {
     private var decoder: Opus.Decoder?
-    private var playerNode: AVAudioPlayerNode!
+    private var playerNode: AVAudioPlayerNode
     
-    init (outputFormat: AVAudioFormat) {
+    init (outputFormat: AVAudioFormat, playerNode: AVAudioPlayerNode) {
         do {
             decoder = try Opus.Decoder(format: outputFormat, application: .voip)
             
-            playerNode = AVAudioPlayerNode()
+            self.playerNode = playerNode
         }
         catch {
             fatalError("Failed to create Opus decoder: \(error)")
         }
     }
     
-    func register(audioEngine: AVAudioEngine, outputFormat: AVAudioFormat) {
-        audioEngine.attach(playerNode)
-        audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: outputFormat)
-
-        
-    }
-    
     func play(encodedData: Data) {
         guard let decoder else { return }
         
-        playerNode.play()
-        
-        do {
-            let decodedBuffer = try decoder.decode(encodedData)
-            
-            playerNode.scheduleBuffer(decodedBuffer)
-        }
-        catch {
-            print("Failed to decode buffer: \(error.localizedDescription)")
+        DispatchQueue.main.async {
+            do {
+                let decodedBuffer = try decoder.decode(encodedData)
+                
+                self.playerNode.scheduleBuffer(decodedBuffer)
+                
+                if !self.playerNode.isPlaying {
+                    self.playerNode.play()
+                }
+            }
+            catch {
+                print("Failed to decode buffer: \(error.localizedDescription)")
+            }
         }
     }
 }

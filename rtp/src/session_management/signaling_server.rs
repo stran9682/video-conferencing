@@ -190,7 +190,7 @@ fn spawn_signaling_connection(stream_type: StreamType) {
     runtime().spawn(async move {
         println!("{:?} Making a request!", stream_type);
 
-        if let Err(e) = connect_to_signaling_server(host_addr_str, stream_type).await {
+        while let Err(e) = connect_to_signaling_server(host_addr_str, stream_type).await {
             eprintln!(
                 "{:?} Failed to connect to signaling server, {}",
                 stream_type, e
@@ -381,11 +381,15 @@ async fn add_peers(
 
 async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
     let peer_manager = match media_type {
-        StreamTypeWithArgs::Audio {
-            sample_rate: _,
-            channels: _,
-        } => AUDIO_PEERS.wait(),
-        StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.wait(),
+        StreamTypeWithArgs::Audio {sample_rate: _, channels: _, } => AUDIO_PEERS.get(),
+        StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.get(),
+    };
+
+    let Some(peer_manager) = peer_manager else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Peer manager of type, {:?}, not initialized", media_type)
+        ));
     };
 
     let Ok(signaling_addr) = listener().await.local_addr() else {
@@ -423,12 +427,19 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
 async fn handle_request(request: &ServerArgs) -> io::Result<()> {
     let (specifications, peer_manager) = match request.stream_type {
         StreamTypeWithArgs::Video { pps: _, sps: _ } => {
-            (PEER_SPECIFICATIONS.get(), FRAME_PEERS.wait())
+            (PEER_SPECIFICATIONS.get(), FRAME_PEERS.get())
         }
         StreamTypeWithArgs::Audio {
             sample_rate: _,
             channels: _,
-        } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.wait()),
+        } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.get()),
+    };
+
+    let Some(peer_manager) = peer_manager else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Peer manager of type, {:?}, not initialized!", request.stream_type)
+        ));
     };
 
     println!("{:?}", request);

@@ -20,6 +20,7 @@ use bytes::{self, Buf, BufMut, BytesMut};
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 
+#[derive(Debug)]
 pub struct RTPHeader {
     pub version: u8,
     pub padding: bool,

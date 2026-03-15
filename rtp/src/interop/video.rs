@@ -131,7 +131,9 @@ pub async fn rtp_frame_receiver(
         );
 
         // Send to swift
-        if let Some(play_out_time) = play_out_time && header.marker {
+        if let Some(play_out_time) = play_out_time
+            && header.marker
+        {
             let Some(frame) = peer_manager.pop_node(header.ssrc, header.timestamp) else {
                 continue;
             };

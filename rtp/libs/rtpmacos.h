@@ -10,6 +10,8 @@ typedef enum StreamType {
 
 typedef void (*ReleaseCallback)(void*);
 
+bool rust_send_audio_sample(const uint8_t *data, uintptr_t len, uint32_t timestamp);
+
 bool rust_send_frame(const uint8_t *data,
                      uintptr_t len,
                      void *context,
@@ -17,6 +19,8 @@ bool rust_send_frame(const uint8_t *data,
                      uint32_t timestamp);
 
 void run_runtime_server(enum StreamType stream);
+
+extern void swift_receive_sample(void *context, const uint8_t *audioData, uintptr_t length);
 
 extern void swift_receive_frame(void *context, void *frameData, uintptr_t frameDataLength);
 

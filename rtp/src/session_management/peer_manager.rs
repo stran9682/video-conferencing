@@ -298,11 +298,15 @@ impl PeerManager {
     pub fn pop_node(&self, ssrc: u32, timestamp: u32) -> Option<PlayoutBufferNode> {
         let mut peer = self.peers.get_mut(&ssrc)?;
 
-        let Some(index) = peer.playout_buffer.iter().position(|x| x.rtp_timestamp == timestamp) else {
+        let Some(index) = peer
+            .playout_buffer
+            .iter()
+            .position(|x| x.rtp_timestamp == timestamp)
+        else {
             return None;
         };
 
-        let node  = peer.playout_buffer.remove(index);
+        let node = peer.playout_buffer.remove(index);
 
         Some(node)
     }
