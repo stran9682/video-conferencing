@@ -31,12 +31,18 @@ extern void *swift_receive_pps_sps(void *context,
                                    uintptr_t pps_length,
                                    const uint8_t *sps,
                                    uintptr_t sps_length,
-                                   const uint8_t *addr);
+                                   uint32_t ssrc);
 
 extern void *swift_receive_audio_config(void *audio_manager_context,
                                         double sample_rate,
                                         uint32_t channels,
                                         uint32_t ssrc);
+
+extern void swift_remove_audio_peer(void *audio_manager_context,
+                                    uint32_t ssrc,
+                                    void *participant_context);
+
+extern void swift_remove_video_peer(uint32_t ssrc, void *video_manager_context, void *peer_context);
 
 void rust_set_signalling_addr(const uint8_t *host_addr, uintptr_t host_addr_length);
 

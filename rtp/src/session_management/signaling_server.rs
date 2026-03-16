@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use core::slice;
-use dashmap::DashSet;
+use dashmap::DashMap;
 use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -42,7 +42,7 @@ unsafe extern "C" {
         pps_length: usize,
         sps: *const u8,
         sps_length: usize,
-        addr: *const u8,
+        ssrc: u32,
     ) -> *mut c_void;
 
     fn swift_receive_audio_config(
@@ -51,6 +51,18 @@ unsafe extern "C" {
         channels: u32,
         ssrc: u32,
     ) -> *mut c_void;
+
+    fn swift_remove_audio_peer(
+        audio_manager_context: *mut c_void,
+        ssrc: u32,
+        participant_context: *mut c_void,
+    );
+
+    fn swift_remove_video_peer(
+        ssrc: u32,
+        video_manager_context: *mut c_void,
+        peer_context: *mut c_void,
+    );
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -88,7 +100,7 @@ pub struct OpusArgs {
 }
 
 pub struct PeerSpecifications {
-    peer_signaling_addresses: DashSet<SocketAddr>,
+    peer_signaling_addresses: DashMap<u32, SocketAddr>,
     self_h264_args: Mutex<Option<H264Args>>,
     self_opus_args: Mutex<Option<OpusArgs>>,
 }
@@ -96,7 +108,7 @@ pub struct PeerSpecifications {
 impl PeerSpecifications {
     pub fn new() -> Self {
         Self {
-            peer_signaling_addresses: DashSet::new(),
+            peer_signaling_addresses: DashMap::new(),
             self_h264_args: Mutex::new(None),
             self_opus_args: Mutex::new(None),
         }
@@ -119,8 +131,12 @@ impl PeerSpecifications {
             .collect()
     }
 
-    pub fn add_peer(&self, addr: SocketAddr) {
-        self.peer_signaling_addresses.insert(addr);
+    pub fn add_peer(&self, addr: SocketAddr, ssrc: u32) {
+        self.peer_signaling_addresses.insert(ssrc, addr);
+    }
+
+    pub fn remove_peer(&self, ssrc: &u32) {
+        self.peer_signaling_addresses.remove(&ssrc);
     }
 }
 
@@ -179,6 +195,12 @@ pub extern "C" fn rust_send_h264_config(
     peer_specifications.set_h264_args(H264Args { sps, pps });
 
     spawn_signaling_connection(StreamType::Video);
+}
+
+pub fn remove_peer_signalling_address(ssrc: &u32) {
+    if let Some(peer_specifications) = PEER_SPECIFICATIONS.get() {
+        peer_specifications.remove_peer(&ssrc);
+    }
 }
 
 fn spawn_signaling_connection(stream_type: StreamType) {
@@ -370,7 +392,10 @@ async fn add_peers(
         .parse()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    PEER_SPECIFICATIONS.get().unwrap().add_peer(signaling_addr);
+    PEER_SPECIFICATIONS
+        .get()
+        .unwrap()
+        .add_peer(signaling_addr, response.ssrc);
 
     for response in response.peer_signalling_addresses {
         addresses.push(response);
@@ -381,14 +406,17 @@ async fn add_peers(
 
 async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
     let peer_manager = match media_type {
-        StreamTypeWithArgs::Audio {sample_rate: _, channels: _, } => AUDIO_PEERS.get(),
+        StreamTypeWithArgs::Audio {
+            sample_rate: _,
+            channels: _,
+        } => AUDIO_PEERS.get(),
         StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.get(),
     };
 
     let Some(peer_manager) = peer_manager else {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("Peer manager of type, {:?}, not initialized", media_type)
+            format!("Peer manager of type, {:?}, not initialized", media_type),
         ));
     };
 
@@ -438,7 +466,10 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
     let Some(peer_manager) = peer_manager else {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("Peer manager of type, {:?}, not initialized!", request.stream_type)
+            format!(
+                "Peer manager of type, {:?}, not initialized!",
+                request.stream_type
+            ),
         ));
     };
 
@@ -487,7 +518,7 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
                     pps.len(),
                     sps.as_ptr(),
                     sps.len(),
-                    media_addr.to_string().as_ptr(),
+                    request.ssrc,
                 )
             };
 
@@ -500,7 +531,7 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
         .parse()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    specifications.add_peer(signaling_addr);
+    specifications.add_peer(signaling_addr, request.ssrc);
 
     Ok(())
 }
@@ -543,4 +574,26 @@ async fn get_specifications(stream_type: StreamType) -> io::Result<StreamTypeWit
     };
 
     Ok(response_args)
+}
+
+pub fn remove_peer(peer_manager: &Arc<PeerManager>, ssrc: &u32, stream_type: StreamType) {
+    let peer = peer_manager.remove_peer(&ssrc);
+    remove_peer_signalling_address(&ssrc);
+
+    match stream_type {
+        StreamType::Audio => unsafe {
+            swift_remove_audio_peer(
+                AUDIO_MANAGER_CONTEXT.get().unwrap().context,
+                *ssrc,
+                peer.swift_peer_model,
+            );
+        },
+        StreamType::Video => unsafe {
+            swift_remove_video_peer(
+                *ssrc,
+                PEER_VIDEO_CONTEXT.get().unwrap().context,
+                peer.swift_peer_model,
+            );
+        },
+    }
 }

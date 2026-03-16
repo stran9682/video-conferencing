@@ -51,7 +51,7 @@ pub struct Peer {
     wrap_around_count: u32,
 
     /// the swift context that will be receiving and decoding the payload
-    swift_peer_model: *mut std::ffi::c_void,
+    pub swift_peer_model: *mut std::ffi::c_void,
 
     /// Stores the arrival time of the WINDOW_SIZE most recent packets
     window: VecDeque<u32>,
@@ -92,6 +92,14 @@ impl Peer {
             expected_prior: 0,
             received_prior: 0,
         }
+    }
+
+    fn is_timed_out(&self) -> bool {
+        let Some(last_sr_time) = self.delay_since_last_sr else {
+            return false;
+        };
+
+        return last_sr_time.elapsed().as_secs() > 10;
     }
 
     /// Determines the min arrival time along in a window,
@@ -263,6 +271,21 @@ impl PeerManager {
         }
     }
 
+    pub fn remove_peer(&self, ssrc: &u32) -> Peer {
+        let (_, peer) = self.peers.remove(&ssrc).unwrap();
+        self.delay_calculator.remove_peer(ssrc);
+        self.peer_addresses.remove(&ssrc);
+
+        peer
+    }
+
+    pub fn is_peer_timed_out(&self, ssrc: &u32) -> bool {
+        match self.peers.get(&ssrc) {
+            Some(peer) => peer.is_timed_out(),
+            None => false,
+        }
+    }
+
     pub fn peer_get_min_window(&self, ssrc: u32, difference: u32) -> Option<u32> {
         let peers = &self.peers;
 
@@ -292,6 +315,13 @@ impl PeerManager {
         self.peer_addresses
             .iter()
             .map(|entry| entry.value().clone())
+            .collect()
+    }
+
+    pub fn get_ssrc(&self) -> Vec<u32> {
+        self.peer_addresses
+            .iter()
+            .map(|peer| peer.key().clone())
             .collect()
     }
 

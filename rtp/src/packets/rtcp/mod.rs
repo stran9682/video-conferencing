@@ -14,6 +14,7 @@ use tokio::time::{Duration, sleep};
 use crate::interop::StreamType;
 use crate::packets::rtcp::rtcp_header::{PacketType, RTCPHeader};
 use crate::packets::rtcp::sender_report::SenderReport;
+use crate::session_management::signaling_server::remove_peer;
 use crate::{interop::runtime, session_management::peer_manager::PeerManager};
 
 unsafe extern "C" {
@@ -80,8 +81,6 @@ async fn rtcp_sender(
         // wait for packet time
         sleep(Duration::from_secs_f64(interval)).await;
 
-        let peers = peer_manager.get_peers();
-
         // converting system time to ntp format:
         // graciously from: https://tickelton.gitlab.io/articles/ntp-timestamps/
         let now = SystemTime::now();
@@ -114,6 +113,13 @@ async fn rtcp_sender(
         packet.put(header.serialize());
         packet.put(sender_report.serialize());
 
+        for ssrc in peer_manager.get_ssrc() {
+            if peer_manager.is_peer_timed_out(&ssrc) {
+                remove_peer(&peer_manager, &ssrc, stream_type);
+            }
+        }
+
+        let peers = peer_manager.get_peers();
         for addr in peers {
             let rtcp_port = addr.port() + 1;
             let peer_ip = format!("{}:{}", addr.ip(), rtcp_port);

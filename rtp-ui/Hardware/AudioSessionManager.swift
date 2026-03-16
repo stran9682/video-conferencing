@@ -85,12 +85,38 @@ class AudioManager {
             playerNode.play()
             self.participantNodes[ssrc] = participantAudio
             
-            self.audioEngine.prepare()                                       // 2. Re-prepare
+            self.audioEngine.prepare()
             try? self.audioEngine.start()
         }
         
         return participantAudio
     }
+    
+    func removeParticipant(ssrc: UInt32) {
+        print("Removing participant — ssrc: \(ssrc)")
+        
+        DispatchQueue.main.async {
+            self.participantNodes[ssrc]?.playerNode.stop()
+            self.audioEngine.disconnectNodeOutput(self.participantNodes[ssrc]!.playerNode)
+            self.audioEngine.detach(self.participantNodes[ssrc]!.playerNode)
+            self.participantNodes.removeValue(forKey: ssrc)
+        }
+    }
+}
+
+@_cdecl("swift_remove_audio_peer")
+public func swift_remove_audio_peer(
+    _ audioContext: UnsafeMutableRawPointer?,
+    _ ssrc: UInt32,
+    _ participantContext: UnsafeMutableRawPointer?
+) {
+    guard let audioContext, let participantContext else { return }
+    
+    let audioManager = Unmanaged<AudioManager>.fromOpaque(audioContext).takeUnretainedValue()
+    
+    audioManager.removeParticipant(ssrc: ssrc)
+    
+    let _ = Unmanaged<ParticipantAudio>.fromOpaque(participantContext).takeRetainedValue()
 }
 
 @_cdecl("swift_receive_sample")
@@ -126,7 +152,7 @@ public func swift_receive_audio_config(
 
 class ParticipantAudio {
     private var decoder: Opus.Decoder?
-    private var playerNode: AVAudioPlayerNode
+    public var playerNode: AVAudioPlayerNode
     
     init (outputFormat: AVAudioFormat, playerNode: AVAudioPlayerNode) {
         do {

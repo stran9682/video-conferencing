@@ -13,11 +13,7 @@ use crate::{
 };
 
 unsafe extern "C" {
-    fn swift_receive_sample(
-        context: *mut std::ffi::c_void,
-        audioData: *const u8,
-        length: usize
-    );
+    fn swift_receive_sample(context: *mut std::ffi::c_void, audioData: *const u8, length: usize);
 }
 
 pub struct EncodedAudio {

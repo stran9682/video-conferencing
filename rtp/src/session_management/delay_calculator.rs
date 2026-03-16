@@ -62,6 +62,10 @@ impl DelayCalculator {
         }
     }
 
+    pub fn remove_peer(&self, ssrc: &u32) {
+        self.peer_delay.remove(&ssrc);
+    }
+
     pub fn add_peer(&self, ssrc: u32) {
         self.peer_delay
             .insert(ssrc, PeerDelay::new(self.skew_threshold));
