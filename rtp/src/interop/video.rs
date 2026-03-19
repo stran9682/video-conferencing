@@ -1,3 +1,4 @@
+use std::mem;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{io, sync::Arc};
 
@@ -158,6 +159,8 @@ pub async fn rtp_frame_receiver(
                     frame_data_length,
                 );
             }
+
+            mem::forget(frame_data);
         }
 
         //println!("{}: {}", addr.to_string(), bytes_read);

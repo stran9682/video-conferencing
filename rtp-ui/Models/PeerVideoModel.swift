@@ -70,31 +70,6 @@ class PeerVideoModel {
     }
 }
 
-
-func auditNALU(data: UnsafeMutableRawPointer, length: Int) {
-    // 1. Move past the 4-byte AVCC length header
-    let payload = data.assumingMemoryBound(to: UInt8.self).advanced(by: 4)
-    
-    // 2. The first byte of the NALU is the header
-    let headerByte = payload.pointee
-    
-    // 3. Extract the NALU Type (lower 5 bits)
-    let naluType = headerByte & 0x1F
-    
-    let typeName: String
-    switch naluType {
-    case 1:  typeName = "P-Frame (Non-IDR Slice)"
-    case 5:  typeName = "IDR-Frame (Key Frame)"
-    case 6:  typeName = "SEI (Supplemental Information)"
-    case 7:  typeName = "SPS (Sequence Parameter Set)"
-    case 8:  typeName = "PPS (Picture Parameter Set)"
-    case 9:  typeName = "AUD (Access Unit Delimiter)"
-    default: typeName = "Unknown (\(naluType))"
-    }
-    
-    print("NALU Type: \(naluType) [\(typeName)] | Header Byte: \(String(format: "%02X", headerByte))")
-}
-
 @_cdecl("swift_receive_frame")
 public func swift_receive_frame(
     _ context: UnsafeMutableRawPointer?,
@@ -103,23 +78,23 @@ public func swift_receive_frame(
 ) {
     guard let context = context, let frameData = frameData else { return }
     
-//    auditNALU(data: frameData, length: Int(frameDataLength))
-    
     let peerVideoModel = Unmanaged<PeerVideoModel>.fromOpaque(context).takeUnretainedValue()
     
-    // TODO: I'm copying for now, but look into a zero copy solution.
-    let frameDataCopy = UnsafeMutableRawPointer.allocate(byteCount: Int(frameDataLength), alignment: 16)
+    var customBlockSource = CMBlockBufferCustomBlockSource()
+    customBlockSource.version = kCMBlockBufferCustomBlockSourceVersion
     
-    frameDataCopy.copyMemory(from: frameData, byteCount: Int(frameDataLength))
+    customBlockSource.FreeBlock = { _, memoryBlock, _ in
+        free(memoryBlock)
+    }
     
     var blockBuffer: CMBlockBuffer?
     
     let status = CMBlockBufferCreateWithMemoryBlock(
         allocator: kCFAllocatorDefault,
-        memoryBlock: frameDataCopy,
+        memoryBlock: frameData,
         blockLength: Int(frameDataLength),
-        blockAllocator: kCFAllocatorDefault,
-        customBlockSource: nil,
+        blockAllocator: nil,
+        customBlockSource: &customBlockSource,
         offsetToData: 0,
         dataLength: Int(frameDataLength),
         flags: 0,
