@@ -76,18 +76,18 @@ class AudioManager {
         print("Adding participant — sample_rate: \(sample_rate), channels: \(channels), ssrc: \(ssrc)")
         let participantAudio = ParticipantAudio(outputFormat: outputFormat, playerNode: playerNode)
         
-        DispatchQueue.main.async {
-            self.audioEngine.stop()
-            
-            self.audioEngine.attach(playerNode)
-            self.audioEngine.connect(playerNode, to: self.audioEngine.mainMixerNode, format: outputFormat)
-            
-            playerNode.play()
-            self.participantNodes[ssrc] = participantAudio
-            
-            self.audioEngine.prepare()
-            try? self.audioEngine.start()
-        }
+        self.audioEngine.stop()
+        
+        self.audioEngine.attach(playerNode)
+        self.audioEngine.connect(playerNode, to: self.audioEngine.mainMixerNode, format: outputFormat)
+        
+        playerNode.play()
+//        DispatchQueue.main.async {
+        self.participantNodes[ssrc] = participantAudio
+//        }
+        
+        self.audioEngine.prepare()
+        try? self.audioEngine.start()
         
         return participantAudio
     }
@@ -95,12 +95,13 @@ class AudioManager {
     func removeParticipant(ssrc: UInt32) {
         print("Removing participant — ssrc: \(ssrc)")
         
-        DispatchQueue.main.async {
-            self.participantNodes[ssrc]?.playerNode.stop()
-            self.audioEngine.disconnectNodeOutput(self.participantNodes[ssrc]!.playerNode)
-            self.audioEngine.detach(self.participantNodes[ssrc]!.playerNode)
-            self.participantNodes.removeValue(forKey: ssrc)
-        }
+        self.participantNodes[ssrc]?.playerNode.stop()
+        self.audioEngine.disconnectNodeOutput(self.participantNodes[ssrc]!.playerNode)
+        self.audioEngine.detach(self.participantNodes[ssrc]!.playerNode)
+        
+//        DispatchQueue.main.async {
+        self.participantNodes.removeValue(forKey: ssrc)
+//        }
     }
 }
 
@@ -168,19 +169,17 @@ class ParticipantAudio {
     func play(encodedData: Data) {
         guard let decoder else { return }
         
-        DispatchQueue.main.async {
-            do {
-                let decodedBuffer = try decoder.decode(encodedData)
-                
-                self.playerNode.scheduleBuffer(decodedBuffer)
-                
-                if !self.playerNode.isPlaying {
-                    self.playerNode.play()
-                }
+        do {
+            let decodedBuffer = try decoder.decode(encodedData)
+            
+            self.playerNode.scheduleBuffer(decodedBuffer)
+            
+            if !self.playerNode.isPlaying {
+                self.playerNode.play()
             }
-            catch {
-                print("Failed to decode buffer: \(error.localizedDescription)")
-            }
+        }
+        catch {
+            print("Failed to decode buffer: \(error.localizedDescription)")
         }
     }
 }
