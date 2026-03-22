@@ -76,7 +76,7 @@ impl RTPHeader {
         buf
     }
 
-    pub fn deserialize(packet: &mut BytesMut) -> RTPHeader {
+    pub fn deserialize<B: Buf>(packet: &mut B) -> RTPHeader {
         let b0 = packet.get_u8();
         let version = b0 >> 6 & 0x3;
         let padding = (b0 >> 5 & 0x1) > 0;

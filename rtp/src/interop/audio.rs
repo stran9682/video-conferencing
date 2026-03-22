@@ -5,7 +5,8 @@ use std::{
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
-use tokio::{net::UdpSocket, sync::mpsc};
+use quinn::Connection;
+use tokio::{sync::mpsc};
 
 use crate::{
     packets::rtp::rtp::RTPHeader,
@@ -22,7 +23,6 @@ pub struct EncodedAudio {
 }
 
 pub async fn rtp_audio_sender(
-    socket: Arc<UdpSocket>,
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedAudio>,
 ) {
@@ -55,10 +55,10 @@ pub async fn rtp_audio_sender(
 
         //println!("packet size: {:?}", packet.len());
 
-        for addr in peers.iter() {
-            match socket.send_to(&packet, addr).await {
+        for connection in peers.iter() {
+            match connection.send_datagram_wait(packet.clone().freeze()).await {
                 Ok(_) => {}
-                Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
+                Err(e) => eprintln!("Failed to send to {}: {}", connection.remote_address(), e),
             }
         }
 
@@ -67,14 +67,17 @@ pub async fn rtp_audio_sender(
 }
 
 pub async fn rtp_audio_receiver(
-    socket: Arc<UdpSocket>,
+    connection: Arc<Connection>,
     peer_manager: Arc<PeerManager>,
     media_clock_rate: u32,
 ) -> io::Result<()> {
-    let mut buffer = [0u8; 1500];
+
+    println!("Starting an audio receiver");
 
     loop {
-        let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
+        let Ok(mut data) = connection.read_datagram().await else {
+            continue;
+        };
 
         //println!("Got a packet!");
 
@@ -92,10 +95,10 @@ pub async fn rtp_audio_receiver(
             }
         };
 
-        let mut data = BytesMut::with_capacity(bytes_read);
-        data.put_slice(&buffer[..bytes_read]);
-
         let header = RTPHeader::deserialize(&mut data);
+
+        let clone = Arc::clone(&connection);
+        peer_manager.add_connection(&header.ssrc, clone);
 
         let play_out_time = calculate_playout_time(
             &peer_manager,

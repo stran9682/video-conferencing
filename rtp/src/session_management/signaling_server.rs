@@ -17,8 +17,8 @@ use tokio::{
 };
 
 use crate::{
-    interop::{StreamType, runtime},
-    session_management::peer_manager::PeerManager,
+    interop::{StreamType, audio::rtp_audio_receiver, runtime, video::rtp_frame_receiver},
+    session_management::peer_manager::{PeerManager},
 };
 
 const BUFFER_SIZE: usize = 1500;
@@ -79,6 +79,7 @@ struct ServerArgs {
     ssrc: u32,
     stream_type: StreamTypeWithArgs,
     peer_signalling_addresses: Vec<String>,
+    cert: Vec<u8>,
 }
 
 struct PeerVideoManagerContext {
@@ -234,6 +235,28 @@ async fn listener() -> &'static TcpListener {
         .await
 }
 
+pub fn accept_endpoints(peer_manager: &Arc<PeerManager>, stream_type: StreamType) {
+    let peer_manager = Arc::clone(&peer_manager);
+
+    runtime().spawn(async move {
+        while let Some(incoming) = peer_manager.endpoint.accept().await {
+
+            println!("INCOMING ENDPOINT!");
+            let connection = incoming.await.unwrap();
+
+            let peer_manager = Arc::clone(&peer_manager);
+            runtime().spawn(async move {
+
+                let connection = Arc::new(connection);
+                match stream_type {
+                    StreamType::Audio => rtp_audio_receiver(connection, peer_manager, 48_000).await,
+                    StreamType::Video => rtp_frame_receiver(connection, peer_manager, 90_000).await
+                }
+            });
+        }
+    });
+}
+
 /// inject an instance of a peer manager for the server to manage
 pub async fn run_signaling_server(
     peer_manager: Arc<PeerManager>,
@@ -252,6 +275,9 @@ pub async fn run_signaling_server(
     }
 
     println!("{}", listener().await.local_addr().unwrap());
+
+    // TODO : an endpoint accepter task
+    accept_endpoints(&peer_manager, stream_type);
 
     loop {
         let (mut socket, client_addr) = match listener().await.accept().await {
@@ -388,10 +414,50 @@ async fn add_peers(
     println!("Adding a peer!");
     handle_request(&response).await?;
 
+
+    // TODO: establish connection with peer
+    let peer_manager = match response.stream_type {
+        StreamTypeWithArgs::Audio {
+            sample_rate: _,
+            channels: _,
+        } => AUDIO_PEERS.get(),
+        StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.get(),
+    };
+
+    let Some(peer_manager) = peer_manager else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Peer manager of type, {:?}, not initialized", response.stream_type),
+        ));
+    };
+
     let signaling_addr: SocketAddr = signaling_addr
         .parse()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
+    let media_addr: SocketAddr = response.local_rtp_address
+        .parse()
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    
+    
+    match peer_manager.connect_to_peer(media_addr, &response.ssrc.to_string(), &response.cert).await {
+        Ok(connection) => {
+            let connection = Arc::new(connection);
+
+            peer_manager.add_connection(&response.ssrc, Arc::clone(&connection));
+
+            let peer_manager = Arc::clone(&peer_manager);
+            runtime().spawn(async move {
+
+                match response.stream_type {
+                    StreamTypeWithArgs::Audio { sample_rate, channels } => rtp_audio_receiver(connection, peer_manager, 48_000).await,
+                    StreamTypeWithArgs::Video { pps, sps } => rtp_frame_receiver(connection, peer_manager, 90_000).await
+                }
+            });
+        },
+        Err(e) => eprintln!("Couldn't create QUIC connection... {}", e)
+    }
+   
     PEER_SPECIFICATIONS
         .get()
         .unwrap()
@@ -437,7 +503,7 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
     // writing the response
     let response = ServerArgs {
         signaling_address: signaling_addr.to_string(),
-        local_rtp_address: peer_manager.local_rtp_addr().to_string(),
+        local_rtp_address: peer_manager.endpoint.local_addr().unwrap().to_string(),
         ssrc: peer_manager.local_ssrc(),
         stream_type: media_type,
         peer_signalling_addresses: specifications
@@ -445,6 +511,7 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
             .iter()
             .map(|addr| addr.to_string())
             .collect(),
+        cert: peer_manager.der_cert.to_vec()
     };
 
     let json_response = serde_json::to_string(&response)?;
@@ -484,10 +551,10 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
 
     // TOOO: If the ip address & ssrc is the same, remove the old peer ,then update their specs
 
-    let media_addr: SocketAddr = request
-        .local_rtp_address
-        .parse()
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    // let media_addr: SocketAddr = request
+    //     .local_rtp_address
+    //     .parse()
+    //     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     match &request.stream_type {
         StreamTypeWithArgs::Audio {
@@ -506,7 +573,7 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
                 )
             };
 
-            peer_manager.add_peer(request.ssrc, media_addr, swift_peer_model);
+            peer_manager.add_peer_data(request.ssrc, swift_peer_model);
         }
         StreamTypeWithArgs::Video { pps, sps } => {
             let context = PEER_VIDEO_CONTEXT.wait();
@@ -522,7 +589,7 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
                 )
             };
 
-            peer_manager.add_peer(request.ssrc, media_addr, swift_peer_model);
+            peer_manager.add_peer_data(request.ssrc, swift_peer_model);
         }
     }
 

@@ -121,12 +121,12 @@ async fn rtcp_sender(
 
         let peers = peer_manager.get_peers();
         for addr in peers {
-            let rtcp_port = addr.port() + 1;
-            let peer_ip = format!("{}:{}", addr.ip(), rtcp_port);
+            let rtcp_addr = addr.remote_address();
+            let peer_ip = format!("{}:{}", rtcp_addr.ip(), rtcp_addr.port());
 
             match socket.send_to(&packet, peer_ip).await {
                 Ok(_) => {}
-                Err(e) => eprintln!("Failed to send RTCP to {}: {}", addr, e),
+                Err(e) => eprintln!("Failed to send RTCP to {}: {}", rtcp_addr, e),
             }
         }
     }

@@ -2,8 +2,9 @@ use std::mem;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{io, sync::Arc};
 
-use bytes::{BufMut, Bytes, BytesMut};
-use tokio::{net::UdpSocket, sync::mpsc};
+use bytes::{Bytes};
+use quinn::Connection;
+use tokio::{sync::mpsc};
 
 use crate::packets::rtp::h264::{get_fragments, get_nal_units, rtp_to_avcc_h264};
 use crate::packets::rtp::rtp::RTPHeader;
@@ -40,7 +41,6 @@ impl Drop for EncodedFrame {
 unsafe impl Send for EncodedFrame {}
 
 pub async fn rtp_frame_sender(
-    socket: Arc<UdpSocket>,
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedFrame>,
 ) {
@@ -75,10 +75,10 @@ pub async fn rtp_frame_sender(
 
             // send each packet to every peer
             for fragment in fragments {
-                for addr in peers.iter() {
-                    match socket.send_to(&fragment, addr).await {
+                for connection in peers.iter() {
+                    match connection.send_datagram_wait(fragment.clone()).await {
                         Ok(_) => {}
-                        Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
+                        Err(e) => eprintln!("Failed to send to {}: {}", connection.remote_address(), e),
                     }
                 }
             }
@@ -87,16 +87,18 @@ pub async fn rtp_frame_sender(
 }
 
 pub async fn rtp_frame_receiver(
-    socket: Arc<UdpSocket>,
+    connection: Arc<Connection>,
     peer_manager: Arc<PeerManager>,
     media_clock_rate: u32,
 ) -> io::Result<()> {
-    let mut buffer = [0u8; 1500];
 
     // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
+    println!("Starting a video receiver");
 
     loop {
-        let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
+        let Ok(mut data) = connection.read_datagram().await else {
+            continue;
+        };
 
         // there's absolutely a bug where if the time switches playout will be messed up!
         // (ex: when there's daylight savings)
@@ -117,11 +119,10 @@ pub async fn rtp_frame_receiver(
             }
         };
 
-        // Don't worry too much about copying, we do need to store it anyways
-        let mut data = BytesMut::with_capacity(bytes_read);
-        data.put_slice(&buffer[..bytes_read]);
-
         let header = RTPHeader::deserialize(&mut data);
+
+        let clone = Arc::clone(&connection);
+        peer_manager.add_connection(&header.ssrc, clone);
 
         let play_out_time = calculate_playout_time(
             &peer_manager,

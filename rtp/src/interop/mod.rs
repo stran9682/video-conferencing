@@ -1,24 +1,22 @@
 pub mod audio;
 pub mod video;
+use rand::Rng;
 
 use bytes::Bytes;
 use local_ip_address::local_ip;
 
 use core::slice;
 use std::{
-    io::{self},
-    sync::{Arc, OnceLock},
+    io::{self}, net::{IpAddr, Ipv4Addr, SocketAddr}, str::FromStr, sync::{Arc, OnceLock}
 };
 
 use tokio::{net::UdpSocket, runtime::Runtime, sync::mpsc};
 
 use crate::{
     interop::{
-        audio::{EncodedAudio, rtp_audio_receiver, rtp_audio_sender},
-        video::{EncodedFrame, ReleaseCallback, rtp_frame_receiver, rtp_frame_sender},
-    },
-    packets::{RTPSession, rtcp::start_rtcp},
-    session_management::{peer_manager::PeerManager, signaling_server::run_signaling_server},
+        audio::{EncodedAudio, rtp_audio_sender},
+        video::{EncodedFrame, ReleaseCallback, rtp_frame_sender},
+    }, packets::{RTPSession, rtcp::start_rtcp}, quic::make_server_endpoint, session_management::{peer_manager::PeerManager, signaling_server::run_signaling_server}
 };
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -129,26 +127,34 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
        -   Switch networks (IP address changes)
            Handle a full restart, meanwhile hopefully clients can remove the old peer
            Completely stop the backend and restart.
-
-       -   Just disconnecting arruptly, no reconnection
-           Clients need to detect a timeout period, and remove you
-           RTCP delay since LSR might be useful!
     */
-
+    
     let local_ip = local_ip().unwrap();
-    println!("{local_ip}");
+    println!("New session initialized: {:?}", stream_type);
 
-    let socket = UdpSocket::bind(local_ip.to_string() + ":0").await?;
-    let socket = Arc::new(socket);
+    let addr = Ipv4Addr::from_str(&local_ip.to_string()).unwrap();
+    let rtp_addr = SocketAddr::new(IpAddr::V4(addr), 0);
+    
 
-    // RTCP: Sending to another peer's address is just their RTP address +1
-    let rtcp_port = socket.local_addr()?.port() + 1;
-    let rtcp_socket = UdpSocket::bind(format!("{}:{}", local_ip, rtcp_port)).await?;
+    println!("attempting to make endpoint");
+    let ssrc = {
+        let mut rng = rand::rng();
+        rng.next_u32() // there is a non-zero chance that SSRCs can colide...
+    };
 
-    // Session management objects
+    let (endpoint, server_cert) = make_server_endpoint(rtp_addr, &ssrc)?;
+    println!("Our {:?} address: {:?}", stream_type, endpoint.local_addr());
+
+    let rtcp_port = endpoint.local_addr().unwrap().port() + 1; 
+
+    // Session management structs
     // we'll be using these throughout the program.
-    let rtp_session = RTPSession::new(socket.local_addr()?);
-    let peer_manager = Arc::new(PeerManager::new(rtp_session, stream_type));
+    let rtp_session = RTPSession::new(rtp_addr, ssrc);
+    let peer_manager = Arc::new(PeerManager::new(rtp_session, stream_type, endpoint, server_cert));
+
+    println!("Binding RTCP socket");
+    // RTCP: Sending to another peer's address is just their RTP address +1
+    let rtcp_socket = UdpSocket::bind(format!("{}:{}", local_ip, rtcp_port)).await?;
 
     println!("{:?}, {}", stream_type, peer_manager.rtp_session.ssrc);
 
@@ -160,12 +166,13 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
         }
     });
 
+
+    // TODO: Fix RTCP
     // RTCP Sender and receiver threads
     let peer_manager_clone = Arc::clone(&peer_manager);
     runtime().spawn(async move { start_rtcp(rtcp_socket, peer_manager_clone, stream_type).await });
 
     // Video and Audio sender and receiver threads
-    let sender_socket = Arc::clone(&socket);
     let sender_peers = Arc::clone(&peer_manager);
     match stream_type {
         StreamType::Video => {
@@ -177,10 +184,10 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
             })?;
 
             runtime().spawn(async move {
-                rtp_frame_sender(sender_socket, sender_peers, rx).await;
+                rtp_frame_sender(sender_peers, rx).await;
             });
 
-            rtp_frame_receiver(socket, peer_manager, 90_000).await
+            //rtp_frame_receiver(socket, peer_manager, 90_000).await?
         }
 
         StreamType::Audio => {
@@ -191,12 +198,12 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
                 return io::Error::new(io::ErrorKind::AlreadyExists, "audio stream already in use");
             })?;
 
-            runtime().spawn(async move {
-                rtp_audio_sender(sender_socket, sender_peers, rx).await;
-            });
+            rtp_audio_sender( sender_peers, rx).await;
 
             // TODO:
-            rtp_audio_receiver(socket, peer_manager, 48_000).await
+            //rtp_audio_receiver(socket, peer_manager, 48_000).await
         }
     }
+
+    Ok(())
 }

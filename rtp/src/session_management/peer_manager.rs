@@ -1,5 +1,9 @@
 use bytes::Bytes;
 use dashmap::DashMap;
+use quinn::rustls::pki_types::CertificateDer;
+use quinn::{ClientConfig, Connection, Endpoint, rustls};
+use std::io;
+use std::sync::Arc;
 use std::time::Instant;
 use std::{collections::VecDeque, net::SocketAddr};
 
@@ -219,9 +223,13 @@ pub struct PeerManager {
     // to help take the load off of peers.
     // sending thread can just use this instead,
     // instead of blocking the receiving
-    peer_addresses: DashMap<u32, SocketAddr>,
+    //peer_addresses: DashMap<u32, SocketAddr>,
     pub rtp_session: RTPSession,
     pub delay_calculator: DelayCalculator,
+
+    peer_connections: DashMap<u32, Arc<Connection>>,
+    pub endpoint: Endpoint,
+    pub der_cert: CertificateDer<'static>,
 }
 
 impl PeerManager {
@@ -229,19 +237,25 @@ impl PeerManager {
         self.rtp_session.ssrc
     }
 
-    pub fn local_rtp_addr(&self) -> SocketAddr {
-        self.rtp_session.local_addr
-    }
+    pub fn new(
+        rtp_session: RTPSession, 
+        stream_type: StreamType, 
+        endpoint: Endpoint,
+        der_cert: CertificateDer<'static>
 
-    pub fn new(rtp_session: RTPSession, stream_type: StreamType) -> Self {
+    ) -> Self {
         Self {
             peers: DashMap::new(),
-            peer_addresses: DashMap::new(),
+            //peer_addresses: DashMap::new(),
             rtp_session,
             delay_calculator: DelayCalculator::new(match stream_type {
                 StreamType::Audio => 0,
                 StreamType::Video => 3000,
             }),
+
+            peer_connections: DashMap::new(),
+            endpoint,
+            der_cert
         }
     }
 
@@ -253,17 +267,17 @@ impl PeerManager {
         }
     }
 
-    pub fn add_peer(
+    pub fn add_peer_data(
         &self,
         ssrc: u32,
-        addr: SocketAddr,
+        //addr: SocketAddr,
         swift_peer_model: *mut std::ffi::c_void,
     ) -> bool {
         let peers = &self.peers;
 
         if !peers.contains_key(&ssrc) {
             peers.insert(ssrc, Peer::new(swift_peer_model));
-            self.peer_addresses.insert(ssrc, addr);
+            //self.peer_addresses.insert(ssrc, addr);
             self.delay_calculator.add_peer(ssrc);
             true
         } else {
@@ -271,10 +285,41 @@ impl PeerManager {
         }
     }
 
+    pub async fn connect_to_peer(&self, addr: SocketAddr, server_name: &str, peer_cert: &[u8]) -> io::Result<Connection> {
+        let mut certs = rustls::RootCertStore::empty();
+        let _ = certs.add(CertificateDer::from_slice(&peer_cert));
+        let config = ClientConfig::with_root_certificates(Arc::new(certs))
+            .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, format!("Certificate is invalid: {}", e)))?;
+
+        let connecting = self.endpoint.connect_with(config, addr, "localhost")
+            .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, format!("Failed to connect: {}", e)))?;
+
+        println!("attempting to connect!");
+
+
+        let connection = connecting.await
+            .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, format!("Failed to connect: {}", e)))?;
+
+        println!("Connection created!");
+
+        Ok(connection)
+    }
+
+    pub fn add_connection(&self, ssrc: &u32, connection: Arc<Connection>) {
+        if !self.peer_connections.contains_key(ssrc) {
+            self.peer_connections.insert(*ssrc, connection);
+        }
+    }
+
     pub fn remove_peer(&self, ssrc: &u32) -> Peer {
         let (_, peer) = self.peers.remove(&ssrc).unwrap();
         self.delay_calculator.remove_peer(ssrc);
-        self.peer_addresses.remove(&ssrc);
+        //self.peer_addresses.remove(&ssrc);
+
+        // TODO: remove and close a connection!
+        if let Some(_connection) = self.peer_connections.remove(ssrc) {
+           // connection.1.close(, reason);
+        }
 
         peer
     }
@@ -311,15 +356,15 @@ impl PeerManager {
         peer.add_node(playout_buffer_node, fragment);
     }
 
-    pub fn get_peers(&self) -> Vec<SocketAddr> {
-        self.peer_addresses
+    pub fn get_peers(&self) -> Vec<Arc<Connection>> {
+        self.peer_connections
             .iter()
             .map(|entry| entry.value().clone())
             .collect()
     }
 
     pub fn get_ssrc(&self) -> Vec<u32> {
-        self.peer_addresses
+        self.peer_connections
             .iter()
             .map(|peer| peer.key().clone())
             .collect()

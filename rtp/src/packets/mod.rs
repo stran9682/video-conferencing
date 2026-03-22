@@ -1,5 +1,4 @@
 use crate::packets::rtp::rtp::RTPHeader;
-use rand::Rng;
 use std::{
     net::SocketAddr,
     sync::atomic::{AtomicU16, AtomicU32, Ordering},
@@ -14,19 +13,16 @@ pub struct RTPSession {
     octets_sent: AtomicU32, // this is going to be same for every peer
 
     pub ssrc: u32,
-    pub local_addr: SocketAddr,
 }
 
 impl RTPSession {
-    pub fn new(local_addr: SocketAddr) -> Self {
-        let mut rng = rand::rng();
+    pub fn new(local_addr: SocketAddr, ssrc: u32) -> Self {
 
         Self {
             octets_sent: AtomicU32::new(0),
             current_sequence_num: AtomicU16::new(0),
             packets_generated: AtomicU32::new(0),
-            ssrc: rng.next_u32(), // there is a non-zero chance that SSRCs can colide...
-            local_addr,
+            ssrc,
         }
     }
 

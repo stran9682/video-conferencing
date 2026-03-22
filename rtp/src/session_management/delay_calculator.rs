@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use bytes::BytesMut;
+use bytes::{Bytes};
 use dashmap::DashMap;
 
 use crate::{
@@ -85,7 +85,7 @@ pub fn calculate_playout_time(
     peer_manager: &Arc<PeerManager>,
     arrival_time: Duration,
     media_clock_rate: u32,
-    data: BytesMut,
+    data: Bytes,
     rtp_header: &RTPHeader,
 ) -> Option<u32> {
     /*
@@ -121,7 +121,7 @@ pub fn calculate_playout_time(
     // we calculate the base playout time every packet, but if an existing playoutbuffernode with
     // the same RTP timestamp exists already, the struct is essentially discarded
 
-    let fragment = Fragment::new(rtp_header.sequence_number, data.freeze());
+    let fragment = Fragment::new(rtp_header.sequence_number, data);
 
     peer_manager.add_playout_node_to_peer(rtp_header.ssrc, node, fragment);
 
