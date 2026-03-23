@@ -2,9 +2,9 @@ use std::mem;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{io, sync::Arc};
 
-use bytes::{Bytes};
+use bytes::Bytes;
 use quinn::Connection;
-use tokio::{sync::mpsc};
+use tokio::sync::mpsc;
 
 use crate::packets::rtp::h264::{get_fragments, get_nal_units, rtp_to_avcc_h264};
 use crate::packets::rtp::rtp::RTPHeader;
@@ -40,6 +40,7 @@ impl Drop for EncodedFrame {
 // sometimes reasonable men do unreasonable things
 unsafe impl Send for EncodedFrame {}
 
+// TODO: Somewhere here handle a connection closing
 pub async fn rtp_frame_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedFrame>,
@@ -78,7 +79,9 @@ pub async fn rtp_frame_sender(
                 for connection in peers.iter() {
                     match connection.send_datagram_wait(fragment.clone()).await {
                         Ok(_) => {}
-                        Err(e) => eprintln!("Failed to send to {}: {}", connection.remote_address(), e),
+                        Err(e) => {
+                            eprintln!("Failed to send to {}: {}", connection.remote_address(), e)
+                        }
                     }
                 }
             }
@@ -91,13 +94,20 @@ pub async fn rtp_frame_receiver(
     peer_manager: Arc<PeerManager>,
     media_clock_rate: u32,
 ) -> io::Result<()> {
-
     // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
     println!("Starting a video receiver");
 
     loop {
-        let Ok(mut data) = connection.read_datagram().await else {
-            continue;
+        let mut data = match connection.read_datagram().await {
+            Ok(data) => data,
+            Err(e) => { 
+                
+                let err = format!("Video receiver of {} terminated {}", connection.remote_address(), e);
+
+                eprintln!("{}", err);
+
+                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, err));
+            }
         };
 
         // there's absolutely a bug where if the time switches playout will be messed up!

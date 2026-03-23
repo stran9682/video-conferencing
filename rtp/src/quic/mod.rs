@@ -1,12 +1,17 @@
 use std::{io, net::SocketAddr, sync::Arc};
 
-use quinn::{Endpoint, ServerConfig, rustls::{self, pki_types::{CertificateDer, PrivatePkcs8KeyDer}}};
+use quinn::{
+    Endpoint, ServerConfig,
+    rustls::{
+        self,
+        pki_types::{CertificateDer, PrivatePkcs8KeyDer},
+    },
+};
 
 pub fn make_server_endpoint(
     bind_addr: SocketAddr,
     ssrc: &u32,
 ) -> io::Result<(Endpoint, CertificateDer<'static>)> {
-
     let (server_config, server_cert) = configure_server(ssrc).map_err(|e| {
         io::Error::new(
             io::ErrorKind::ConnectionRefused,
@@ -18,10 +23,7 @@ pub fn make_server_endpoint(
     Ok((endpoint, server_cert))
 }
 
-fn configure_server(
-    ssrc: &u32
-) -> Result<(ServerConfig, CertificateDer<'static>), rustls::Error> {
-    
+fn configure_server(ssrc: &u32) -> Result<(ServerConfig, CertificateDer<'static>), rustls::Error> {
     let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let cert_der = CertificateDer::from(cert.cert);
     let priv_key = PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der());

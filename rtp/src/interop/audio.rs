@@ -6,7 +6,7 @@ use std::{
 
 use bytes::{BufMut, Bytes, BytesMut};
 use quinn::Connection;
-use tokio::{sync::mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
     packets::rtp::rtp::RTPHeader,
@@ -22,6 +22,7 @@ pub struct EncodedAudio {
     pub timestamp: u32,
 }
 
+// TODO: Somewhere here handle a connection closing
 pub async fn rtp_audio_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedAudio>,
@@ -39,7 +40,6 @@ pub async fn rtp_audio_sender(
         //println!("Number of peers: {}", peers.len());
 
         if peers.is_empty() {
-            //println!("-> No peers");
             continue;
         }
 
@@ -71,14 +71,20 @@ pub async fn rtp_audio_receiver(
     peer_manager: Arc<PeerManager>,
     media_clock_rate: u32,
 ) -> io::Result<()> {
-
     println!("Starting an audio receiver");
 
     loop {
-        let Ok(mut data) = connection.read_datagram().await else {
-            continue;
-        };
+        let mut data = match connection.read_datagram().await {
+            Ok(data) => data,
+            Err(e) => {
+                let err = format!("Audio receiver of {} terminated {}", connection.remote_address(), e);
 
+                eprintln!("{}", err);
+
+                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, err));
+            }
+        };
+            
         //println!("Got a packet!");
 
         let now = SystemTime::now();

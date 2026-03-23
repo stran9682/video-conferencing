@@ -1,11 +1,17 @@
-use std::{error::Error, io, net::{IpAddr, Ipv4Addr, SocketAddr}, sync::Arc};
+use std::{
+    error::Error,
+    io,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 use bytes::Bytes;
 use quinn::{
-    ClientConfig, Connection, Endpoint, SendDatagramError, ServerConfig, rustls::{
+    ClientConfig, Connection, Endpoint, SendDatagramError, ServerConfig,
+    rustls::{
         self,
         pki_types::{CertificateDer, PrivatePkcs8KeyDer},
-    }
+    },
 };
 
 #[allow(unused)]
@@ -18,13 +24,15 @@ async fn send_unreliable(connection: &Connection) -> Result<(), SendDatagramErro
 async fn receive_datagram(connection: &Connection) {
     if let Ok(received_bytes) = connection.read_datagram().await {
         // Because it is a unidirectional stream, we can only receive not send back.
-        println!("request from {:?}: {:?}", connection.remote_address(), received_bytes);
+        println!(
+            "request from {:?}: {:?}",
+            connection.remote_address(),
+            received_bytes
+        );
     }
 }
 
-fn make_server_endpoint(
-    bind_addr: SocketAddr,
-) -> io::Result<(Endpoint, CertificateDer<'static>)> {
+fn make_server_endpoint(bind_addr: SocketAddr) -> io::Result<(Endpoint, CertificateDer<'static>)> {
     let (server_config, server_cert) = configure_server().map_err(|e| {
         io::Error::new(
             io::ErrorKind::ConnectionRefused,
@@ -58,32 +66,28 @@ fn make_client_endpoint(
     Ok(endpoint)
 }
 
-fn configure_client(
-    server_certs: &[&[u8]],
-) -> Result<ClientConfig, rustls::Error> {
+fn configure_client(server_certs: &[&[u8]]) -> Result<ClientConfig, rustls::Error> {
     let mut certs = rustls::RootCertStore::empty();
     for cert in server_certs {
         let cert = CertificateDer::from(*cert);
         certs.add(cert)?;
     }
 
-    Ok(ClientConfig::with_root_certificates(Arc::new(certs)).map_err(|_| rustls::Error::HandshakeNotComplete)?)
+    Ok(ClientConfig::with_root_certificates(Arc::new(certs))
+        .map_err(|_| rustls::Error::HandshakeNotComplete)?)
 }
 
-fn run_server(
-    addr: SocketAddr,
-) -> io::Result<CertificateDer<'static>> {
+fn run_server(addr: SocketAddr) -> io::Result<CertificateDer<'static>> {
     let (endpoint, server_cert) = make_server_endpoint(addr)?;
     // accept a single connection
     tokio::spawn(async move {
         let connection = endpoint.accept().await.unwrap().await.unwrap();
-            println!(
-                "[server] incoming connection: addr={}",
-                connection.remote_address()
-            );
+        println!(
+            "[server] incoming connection: addr={}",
+            connection.remote_address()
+        );
 
-            receive_datagram(&connection).await;
-        
+        receive_datagram(&connection).await;
     });
 
     Ok(server_cert)
@@ -95,7 +99,7 @@ async fn run_client(endpoint: &Endpoint, server_addr: SocketAddr) {
     let connection = connect.await.unwrap();
     match send_unreliable(&connection).await {
         Ok(_) => (),
-        Err(_) => println!("Disaster!")
+        Err(_) => println!("Disaster!"),
     };
 
     println!("[client] connected: addr={}", connection.remote_address());

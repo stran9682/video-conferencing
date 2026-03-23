@@ -238,11 +238,10 @@ impl PeerManager {
     }
 
     pub fn new(
-        rtp_session: RTPSession, 
-        stream_type: StreamType, 
+        rtp_session: RTPSession,
+        stream_type: StreamType,
         endpoint: Endpoint,
-        der_cert: CertificateDer<'static>
-
+        der_cert: CertificateDer<'static>,
     ) -> Self {
         Self {
             peers: DashMap::new(),
@@ -255,7 +254,7 @@ impl PeerManager {
 
             peer_connections: DashMap::new(),
             endpoint,
-            der_cert
+            der_cert,
         }
     }
 
@@ -285,20 +284,39 @@ impl PeerManager {
         }
     }
 
-    pub async fn connect_to_peer(&self, addr: SocketAddr, server_name: &str, peer_cert: &[u8]) -> io::Result<Connection> {
+    pub async fn connect_to_peer(
+        &self,
+        addr: SocketAddr,
+        server_name: &str,
+        peer_cert: &[u8],
+    ) -> io::Result<Connection> {
         let mut certs = rustls::RootCertStore::empty();
         let _ = certs.add(CertificateDer::from_slice(&peer_cert));
-        let config = ClientConfig::with_root_certificates(Arc::new(certs))
-            .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, format!("Certificate is invalid: {}", e)))?;
+        let config = ClientConfig::with_root_certificates(Arc::new(certs)).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                format!("Certificate is invalid: {}", e),
+            )
+        })?;
 
-        let connecting = self.endpoint.connect_with(config, addr, "localhost")
-            .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, format!("Failed to connect: {}", e)))?;
+        let connecting = self
+            .endpoint
+            .connect_with(config, addr, "localhost")
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::ConnectionRefused,
+                    format!("Failed to connect: {}", e),
+                )
+            })?;
 
         println!("attempting to connect!");
 
-
-        let connection = connecting.await
-            .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, format!("Failed to connect: {}", e)))?;
+        let connection = connecting.await.map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                format!("Failed to connect: {}", e),
+            )
+        })?;
 
         println!("Connection created!");
 
@@ -318,7 +336,7 @@ impl PeerManager {
 
         // TODO: remove and close a connection!
         if let Some(_connection) = self.peer_connections.remove(ssrc) {
-           // connection.1.close(, reason);
+            // connection.1.close(, reason);
         }
 
         peer

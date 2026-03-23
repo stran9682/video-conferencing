@@ -17,7 +17,6 @@ pub struct RTPSession {
 
 impl RTPSession {
     pub fn new(local_addr: SocketAddr, ssrc: u32) -> Self {
-
         Self {
             octets_sent: AtomicU32::new(0),
             current_sequence_num: AtomicU16::new(0),

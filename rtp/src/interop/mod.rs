@@ -7,7 +7,10 @@ use local_ip_address::local_ip;
 
 use core::slice;
 use std::{
-    io::{self}, net::{IpAddr, Ipv4Addr, SocketAddr}, str::FromStr, sync::{Arc, OnceLock}
+    io::{self},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    str::FromStr,
+    sync::{Arc, OnceLock},
 };
 
 use tokio::{net::UdpSocket, runtime::Runtime, sync::mpsc};
@@ -16,7 +19,10 @@ use crate::{
     interop::{
         audio::{EncodedAudio, rtp_audio_sender},
         video::{EncodedFrame, ReleaseCallback, rtp_frame_sender},
-    }, packets::{RTPSession, rtcp::start_rtcp}, quic::make_server_endpoint, session_management::{peer_manager::PeerManager, signaling_server::run_signaling_server}
+    },
+    packets::{RTPSession, rtcp::start_rtcp},
+    quic::make_server_endpoint,
+    session_management::{peer_manager::PeerManager, signaling_server::run_signaling_server},
 };
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -128,13 +134,12 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
            Handle a full restart, meanwhile hopefully clients can remove the old peer
            Completely stop the backend and restart.
     */
-    
+
     let local_ip = local_ip().unwrap();
     println!("New session initialized: {:?}", stream_type);
 
     let addr = Ipv4Addr::from_str(&local_ip.to_string()).unwrap();
     let rtp_addr = SocketAddr::new(IpAddr::V4(addr), 0);
-    
 
     println!("attempting to make endpoint");
     let ssrc = {
@@ -145,12 +150,17 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
     let (endpoint, server_cert) = make_server_endpoint(rtp_addr, &ssrc)?;
     println!("Our {:?} address: {:?}", stream_type, endpoint.local_addr());
 
-    let rtcp_port = endpoint.local_addr().unwrap().port() + 1; 
+    let rtcp_port = endpoint.local_addr().unwrap().port() + 1;
 
     // Session management structs
     // we'll be using these throughout the program.
     let rtp_session = RTPSession::new(rtp_addr, ssrc);
-    let peer_manager = Arc::new(PeerManager::new(rtp_session, stream_type, endpoint, server_cert));
+    let peer_manager = Arc::new(PeerManager::new(
+        rtp_session,
+        stream_type,
+        endpoint,
+        server_cert,
+    ));
 
     println!("Binding RTCP socket");
     // RTCP: Sending to another peer's address is just their RTP address +1
@@ -165,7 +175,6 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
             eprintln!("Signaling server error: {}", e);
         }
     });
-
 
     // TODO: Fix RTCP
     // RTCP Sender and receiver threads
@@ -198,7 +207,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
                 return io::Error::new(io::ErrorKind::AlreadyExists, "audio stream already in use");
             })?;
 
-            rtp_audio_sender( sender_peers, rx).await;
+            rtp_audio_sender(sender_peers, rx).await;
 
             // TODO:
             //rtp_audio_receiver(socket, peer_manager, 48_000).await

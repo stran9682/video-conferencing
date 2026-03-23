@@ -18,7 +18,7 @@ use tokio::{
 
 use crate::{
     interop::{StreamType, audio::rtp_audio_receiver, runtime, video::rtp_frame_receiver},
-    session_management::peer_manager::{PeerManager},
+    session_management::peer_manager::PeerManager,
 };
 
 const BUFFER_SIZE: usize = 1500;
@@ -240,17 +240,15 @@ pub fn accept_endpoints(peer_manager: &Arc<PeerManager>, stream_type: StreamType
 
     runtime().spawn(async move {
         while let Some(incoming) = peer_manager.endpoint.accept().await {
-
             println!("INCOMING ENDPOINT!");
             let connection = incoming.await.unwrap();
 
             let peer_manager = Arc::clone(&peer_manager);
             runtime().spawn(async move {
-
                 let connection = Arc::new(connection);
                 match stream_type {
                     StreamType::Audio => rtp_audio_receiver(connection, peer_manager, 48_000).await,
-                    StreamType::Video => rtp_frame_receiver(connection, peer_manager, 90_000).await
+                    StreamType::Video => rtp_frame_receiver(connection, peer_manager, 90_000).await,
                 }
             });
         }
@@ -414,7 +412,6 @@ async fn add_peers(
     println!("Adding a peer!");
     handle_request(&response).await?;
 
-
     // TODO: establish connection with peer
     let peer_manager = match response.stream_type {
         StreamTypeWithArgs::Audio {
@@ -427,7 +424,10 @@ async fn add_peers(
     let Some(peer_manager) = peer_manager else {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("Peer manager of type, {:?}, not initialized", response.stream_type),
+            format!(
+                "Peer manager of type, {:?}, not initialized",
+                response.stream_type
+            ),
         ));
     };
 
@@ -435,12 +435,15 @@ async fn add_peers(
         .parse()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let media_addr: SocketAddr = response.local_rtp_address
+    let media_addr: SocketAddr = response
+        .local_rtp_address
         .parse()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    
-    
-    match peer_manager.connect_to_peer(media_addr, &response.ssrc.to_string(), &response.cert).await {
+
+    match peer_manager
+        .connect_to_peer(media_addr, &response.ssrc.to_string(), &response.cert)
+        .await
+    {
         Ok(connection) => {
             let connection = Arc::new(connection);
 
@@ -448,16 +451,20 @@ async fn add_peers(
 
             let peer_manager = Arc::clone(&peer_manager);
             runtime().spawn(async move {
-
                 match response.stream_type {
-                    StreamTypeWithArgs::Audio { sample_rate, channels } => rtp_audio_receiver(connection, peer_manager, 48_000).await,
-                    StreamTypeWithArgs::Video { pps, sps } => rtp_frame_receiver(connection, peer_manager, 90_000).await
+                    StreamTypeWithArgs::Audio {
+                        sample_rate: _,
+                        channels: _,
+                    } => rtp_audio_receiver(connection, peer_manager, 48_000).await,
+                    StreamTypeWithArgs::Video { pps: _, sps: _ } => {
+                        rtp_frame_receiver(connection, peer_manager, 90_000).await
+                    }
                 }
             });
-        },
-        Err(e) => eprintln!("Couldn't create QUIC connection... {}", e)
+        }
+        Err(e) => eprintln!("Couldn't create QUIC connection... {}", e),
     }
-   
+
     PEER_SPECIFICATIONS
         .get()
         .unwrap()
@@ -511,7 +518,7 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
             .iter()
             .map(|addr| addr.to_string())
             .collect(),
-        cert: peer_manager.der_cert.to_vec()
+        cert: peer_manager.der_cert.to_vec(),
     };
 
     let json_response = serde_json::to_string(&response)?;

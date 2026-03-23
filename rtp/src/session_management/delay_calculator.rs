@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use bytes::{Bytes};
+use bytes::Bytes;
 use dashmap::DashMap;
 
 use crate::{
