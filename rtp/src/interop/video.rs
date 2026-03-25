@@ -100,9 +100,12 @@ pub async fn rtp_frame_receiver(
     loop {
         let mut data = match connection.read_datagram().await {
             Ok(data) => data,
-            Err(e) => { 
-                
-                let err = format!("Video receiver of {} terminated {}", connection.remote_address(), e);
+            Err(e) => {
+                let err = format!(
+                    "Video receiver of {} terminated {}",
+                    connection.remote_address(),
+                    e
+                );
 
                 eprintln!("{}", err);
 

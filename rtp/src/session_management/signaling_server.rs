@@ -72,6 +72,18 @@ enum StreamTypeWithArgs {
     Audio { sample_rate: f64, channels: u32 },
 }
 
+impl StreamTypeWithArgs {
+    pub fn to_stream_type(&self) -> StreamType {
+        match self {
+            StreamTypeWithArgs::Audio {
+                sample_rate: _,
+                channels: _,
+            } => StreamType::Audio,
+            StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct ServerArgs {
     signaling_address: String,
@@ -318,15 +330,7 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
         )
     })?;
 
-    let request_stream_type = match request.stream_type {
-        StreamTypeWithArgs::Audio {
-            sample_rate: _,
-            channels: _,
-        } => StreamType::Audio,
-        StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
-    };
-
-    let personal_args = get_specifications(request_stream_type).await?;
+    let personal_args = get_specifications(request.stream_type.to_stream_type()).await?;
 
     let response = write_response(personal_args).await?;
 
@@ -413,12 +417,9 @@ async fn add_peers(
     handle_request(&response).await?;
 
     // TODO: establish connection with peer
-    let peer_manager = match response.stream_type {
-        StreamTypeWithArgs::Audio {
-            sample_rate: _,
-            channels: _,
-        } => AUDIO_PEERS.get(),
-        StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.get(),
+    let peer_manager = match response.stream_type.to_stream_type() {
+        StreamType::Audio => AUDIO_PEERS.get(),
+        StreamType::Video => FRAME_PEERS.get(),
     };
 
     let Some(peer_manager) = peer_manager else {
@@ -478,12 +479,9 @@ async fn add_peers(
 }
 
 async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
-    let peer_manager = match media_type {
-        StreamTypeWithArgs::Audio {
-            sample_rate: _,
-            channels: _,
-        } => AUDIO_PEERS.get(),
-        StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.get(),
+    let peer_manager = match media_type.to_stream_type() {
+        StreamType::Audio => AUDIO_PEERS.get(),
+        StreamType::Video => FRAME_PEERS.get(),
     };
 
     let Some(peer_manager) = peer_manager else {
@@ -527,14 +525,9 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
 }
 
 async fn handle_request(request: &ServerArgs) -> io::Result<()> {
-    let (specifications, peer_manager) = match request.stream_type {
-        StreamTypeWithArgs::Video { pps: _, sps: _ } => {
-            (PEER_SPECIFICATIONS.get(), FRAME_PEERS.get())
-        }
-        StreamTypeWithArgs::Audio {
-            sample_rate: _,
-            channels: _,
-        } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.get()),
+    let (specifications, peer_manager) = match request.stream_type.to_stream_type() {
+        StreamType::Video => (PEER_SPECIFICATIONS.get(), FRAME_PEERS.get()),
+        StreamType::Audio => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.get()),
     };
 
     let Some(peer_manager) = peer_manager else {

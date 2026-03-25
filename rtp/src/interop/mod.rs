@@ -154,7 +154,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
 
     // Session management structs
     // we'll be using these throughout the program.
-    let rtp_session = RTPSession::new(rtp_addr, ssrc);
+    let rtp_session = RTPSession::new(ssrc);
     let peer_manager = Arc::new(PeerManager::new(
         rtp_session,
         stream_type,

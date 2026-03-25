@@ -77,14 +77,18 @@ pub async fn rtp_audio_receiver(
         let mut data = match connection.read_datagram().await {
             Ok(data) => data,
             Err(e) => {
-                let err = format!("Audio receiver of {} terminated {}", connection.remote_address(), e);
+                let err = format!(
+                    "Audio receiver of {} terminated {}",
+                    connection.remote_address(),
+                    e
+                );
 
                 eprintln!("{}", err);
 
                 return Err(io::Error::new(io::ErrorKind::ConnectionAborted, err));
             }
         };
-            
+
         //println!("Got a packet!");
 
         let now = SystemTime::now();

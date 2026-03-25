@@ -1,8 +1,5 @@
 use crate::packets::rtp::rtp::RTPHeader;
-use std::{
-    net::SocketAddr,
-    sync::atomic::{AtomicU16, AtomicU32, Ordering},
-};
+use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 
 pub mod rtcp;
 pub mod rtp;
@@ -16,7 +13,7 @@ pub struct RTPSession {
 }
 
 impl RTPSession {
-    pub fn new(local_addr: SocketAddr, ssrc: u32) -> Self {
+    pub fn new(ssrc: u32) -> Self {
         Self {
             octets_sent: AtomicU32::new(0),
             current_sequence_num: AtomicU16::new(0),
