@@ -145,13 +145,18 @@ async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -
        calculate next RTCP time to send
 
     */
-    let mut buffer = [0u8; 1500];
+    let mut buffer =  BytesMut::with_capacity(1500);
 
     loop {
-        let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
+        let (bytes_read, _) = socket.recv_from(
+            unsafe { buffer.spare_capacity_mut().assume_init_mut() })
+            .await?;
 
-        let mut packet = BytesMut::with_capacity(bytes_read);
-        packet.put(&buffer[..bytes_read]);
+        unsafe { buffer.set_len(bytes_read); }
+
+        let mut packet = buffer.split();
+
+        buffer.reserve(1500);
 
         while packet.len() > 0 {
             let rtcp_header = RTCPHeader::deserialize(&mut packet);

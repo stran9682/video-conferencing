@@ -27,6 +27,8 @@ pub async fn rtp_audio_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedAudio>,
 ) {
+    let mut buffer =  BytesMut::with_capacity(1500);
+
     loop {
         let sample = match rx.recv().await {
             Some(s) => s,
@@ -49,18 +51,21 @@ pub async fn rtp_audio_sender(
                 .get_packet(false, sample.timestamp, sample.data.len() as u32);
 
         //println!("Created a packet");
-
-        let mut packet = header.serialize();
-        packet.put(sample.data);
+        header.serialize(&mut buffer);
+        buffer.put(sample.data);
 
         //println!("packet size: {:?}", packet.len());
+        let packet = buffer.split().freeze();
 
         for connection in peers.iter() {
-            match connection.send_datagram_wait(packet.clone().freeze()).await {
+            match connection.send_datagram_wait(packet.clone()).await {
                 Ok(_) => {}
                 Err(e) => eprintln!("Failed to send to {}: {}", connection.remote_address(), e),
             }
         }
+
+        buffer.reserve(1500);
+
 
         //println!("Sent a packet")
     }
