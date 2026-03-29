@@ -25,7 +25,6 @@ struct ContentView: View {
         rust_send_video_callback(refcon)
     }
     
-    
     var body: some View {
         HStack{
             
@@ -40,7 +39,6 @@ struct ContentView: View {
                 .background(Color.black)
                 
                 UIView(recordingMenuOpen: $recordingMenuOpen)
-                    .frame(minHeight: 85)
                 
             }
             
@@ -48,6 +46,7 @@ struct ContentView: View {
             if recordingMenuOpen {
                 ConfigurationView(screenRecorder: screenRecorder, userStopped: $userStopped)
                     .frame(minWidth: 280, maxWidth: 280)
+                    .disabled(disableInput)
             }
         }
         .task {

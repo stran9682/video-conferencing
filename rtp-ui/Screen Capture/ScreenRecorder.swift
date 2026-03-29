@@ -10,7 +10,7 @@ import Combine
 import OSLog
 
 @Observable
-class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
+class ScreenRecorder: NSObject {
     /// The supported capture types.
     enum CaptureType {
         case display
@@ -39,25 +39,6 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
     }
 
     // MARK: - SCContentSharingPicker Properties
-    var maximumStreamCount = Int() {
-        didSet { updatePickerConfiguration() }
-    }
-    var excludedWindowIDsSelection = Set<Int>() {
-        didSet { updatePickerConfiguration() }
-    }
-
-    var excludedBundleIDsList = [String]() {
-        didSet { updatePickerConfiguration() }
-    }
-
-    var allowsRepicking = true {
-        didSet { updatePickerConfiguration() }
-    }
-
-    var allowedPickingModes = SCContentSharingPickerMode() {
-        didSet { updatePickerConfiguration() }
-    }
-    
     var contentSize = CGSize(width: 1, height: 1)
     private var scaleFactor: Int { Int(NSScreen.main?.backingScaleFactor ?? 2) }
     
@@ -66,48 +47,19 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
 //        CapturePreview()
 //    }()
     
-    private let screenRecorderPicker = SCContentSharingPicker.shared
     private var availableApps = [SCRunningApplication]()
     private(set) var availableDisplays = [SCDisplay]()
     private(set) var availableWindows = [SCWindow]()
-    private(set) var pickerUpdate: Bool = false // Update the running stream immediately with picker selection
-    private var pickerContentFilter: SCContentFilter?
-    private var shouldUsePickerFilter = false
-
-    var isPickerActive = false {
-        didSet {
-            if isPickerActive {
-                logger.info("Picker is active")
-                self.initializePickerConfiguration()
-                self.screenRecorderPicker.isActive = true
-                self.screenRecorderPicker.add(self)
-            } else {
-                logger.info("Picker is inactive")
-                self.screenRecorderPicker.isActive = false
-                self.screenRecorderPicker.remove(self)
-            }
-        }
-    }
 
     // MARK: - Audio Properties
     var isAudioCaptureEnabled = true {
         didSet {
             updateEngine()
-            if isAudioCaptureEnabled {
-                startAudioMetering()
-            } else {
-                stopAudioMetering()
-            }
         }
     }
     var microphoneId: String?
     var isMicCaptureEnabled = false {
         didSet {
-            if isMicCaptureEnabled {
-                addMicrophoneOutput()
-            } else {
-                removeMicrophoneOutput()
-            }
             updateEngine()
         }
     }
@@ -124,10 +76,6 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
         }
     }
     var isAppAudioExcluded = false { didSet { updateEngine() } }
-
-    // A value that specifies how often to retrieve calculated audio levels.
-    private let audioLevelRefreshRate: TimeInterval = 0.1
-    private var audioMeterCancellable: AnyCancellable?
     
     private let recordingOutputPath: String? = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).last
     private var recordingOutput: SCRecordingOutput?
@@ -153,7 +101,7 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
     }
     
     func monitorAvailableContent() async {
-        guard !isSetup || !isPickerActive else { return }
+        guard !isSetup else { return }
         // Refresh the lists of capturable content.
         await self.refreshAvailableContent()
         Timer.publish(every: 3, on: .main, in: .common).autoconnect().sink { [weak self] _ in
@@ -176,17 +124,11 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
             isSetup = true
         }
         
-        // If the user enables audio capture, start monitoring the audio stream.
-        if isAudioCaptureEnabled {
-            startAudioMetering()
-        }
-        
         do {
             let config = streamConfiguration
             let filter = contentFilter
             // Update the running state.
             isRunning = true
-            setPickerUpdate(false)
             // Start the stream and await new video frames.
             for try await frame in captureEngine.startCapture(configuration: config, filter: filter) {
                 //capturePreview.updateFrame(frame)
@@ -206,7 +148,6 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
     func stop() async {
         guard isRunning else { return }
         await captureEngine.stopCapture()
-        stopAudioMetering()
         try? stopRecordingOutput()
         removeMicrophoneOutput()
         isRunning = false
@@ -216,16 +157,6 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
         if let recordingOutputPath = recordingOutputPath {
             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: recordingOutputPath)
         }
-    }
-    
-    private func startAudioMetering() {
-        audioMeterCancellable = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect().sink { [weak self] _ in
-            guard let self = self else { return }
-        }
-    }
-    
-    private func stopAudioMetering() {
-        audioMeterCancellable?.cancel()
     }
     
     private func addMicrophoneOutput() {
@@ -278,69 +209,7 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
         Task {
             let filter = contentFilter
             await captureEngine.update(configuration: streamConfiguration, filter: filter)
-            setPickerUpdate(false)
         }
-    }
-
-    // MARK: - Content-sharing Picker
-    private func initializePickerConfiguration() {
-        var initialConfiguration = SCContentSharingPickerConfiguration()
-        // Set the allowedPickerModes from the app.
-        initialConfiguration.allowedPickerModes = [
-            .singleWindow,
-            .multipleWindows,
-            .singleApplication,
-            .multipleApplications,
-            .singleDisplay
-        ]
-        self.allowedPickingModes = initialConfiguration.allowedPickerModes
-    }
-
-    private func updatePickerConfiguration() {
-        self.screenRecorderPicker.maximumStreamCount = maximumStreamCount
-        // Update the default picker configuration to pass to Control Center.
-        self.screenRecorderPicker.defaultConfiguration = pickerConfiguration
-    }
-
-    nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {
-        logger.info("Picker canceled for stream \(stream)")
-    }
-
-    nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter, for stream: SCStream?) {
-        Task { @MainActor in
-            pickerContentFilter = filter
-            shouldUsePickerFilter = true
-            setPickerUpdate(true)
-            updateEngine()
-        }
-        logger.info("Picker updated with filter=\(filter) for stream=\(stream)")
-    }
-
-    nonisolated func contentSharingPickerStartDidFailWithError(_ error: Error) {
-        logger.error("Error starting picker! \(error)")
-    }
-
-    func setPickerUpdate(_ update: Bool) {
-        Task { @MainActor in
-            self.pickerUpdate = update
-        }
-    }
-
-    func presentPicker() {
-        if let stream = captureEngine.stream {
-            SCContentSharingPicker.shared.present(for: stream)
-        } else {
-            SCContentSharingPicker.shared.present()
-        }
-    }
-
-    private var pickerConfiguration: SCContentSharingPickerConfiguration {
-        var config = SCContentSharingPickerConfiguration()
-        config.allowedPickerModes = allowedPickingModes
-        config.excludedWindowIDs = Array(excludedWindowIDsSelection)
-        config.excludedBundleIDs = excludedBundleIDsList
-        config.allowsChangingSelectedContent = allowsRepicking
-        return config
     }
 
     private var contentFilter: SCContentFilter {
@@ -366,18 +235,13 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
             // Create a content filter that includes a single window.
             filter = SCContentFilter(desktopIndependentWindow: window)
         }
-        // Use filter from content picker, if active.
-        if shouldUsePickerFilter {
-            guard let pickerFilter = pickerContentFilter else { return filter }
-            filter = pickerFilter
-            shouldUsePickerFilter = false
-        }
+        
         return filter
     }
     
     private var streamConfiguration: SCStreamConfiguration {
         
-        var streamConfig = SCStreamConfiguration()
+        let streamConfig = SCStreamConfiguration()
         
         // Configure audio capture.
         streamConfig.capturesAudio = isAudioCaptureEnabled
@@ -436,8 +300,6 @@ class ScreenRecorder: NSObject, SCContentSharingPickerObserver {
             .sorted { $0.owningApplication?.applicationName ?? "" < $1.owningApplication?.applicationName ?? "" }
         // Remove windows that don't have an associated .app bundle.
             .filter { $0.owningApplication != nil && $0.owningApplication?.applicationName != "" }
-        // Remove this app's window from the list.
-            .filter { $0.owningApplication?.bundleIdentifier != Bundle.main.bundleIdentifier }
     }
 }
 

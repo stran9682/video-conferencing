@@ -129,19 +129,6 @@ struct ConfigurationView: View {
                 .disabled(!screenRecorder.isRunning)
             }
             .frame(maxWidth: .infinity, minHeight: 60)
-            .onChange(of: screenRecorder.pickerUpdate) {
-                if !screenRecorder.isRunning {
-                    // start
-                    Task { await screenRecorder.start() }
-                    // Fades the paused screen out.
-                    withAnimation(Animation.easeOut(duration: 0.25)) {
-                        userStopped = false
-                    }
-                } else {
-
-                }
-            }
-            
         }
     }
 }
