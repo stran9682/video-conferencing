@@ -70,6 +70,8 @@ unsafe extern "C" {
 enum StreamTypeWithArgs {
     Video { pps: Vec<u8>, sps: Vec<u8> },
     Audio { sample_rate: f64, channels: u32 },
+    BenchmarkVideo,
+    BenchmarkAudio
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -300,6 +302,9 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
             channels: _,
         } => StreamType::Audio,
         StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
+        _ => {
+            return Err(io::Error::new(std::io::ErrorKind::NetworkUnreachable, "Should not be receiving from benchmarker"))
+        }
     };
 
     let personal_args = get_specifications(request_stream_type).await?;
@@ -411,6 +416,9 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
             channels: _,
         } => AUDIO_PEERS.get(),
         StreamTypeWithArgs::Video { pps: _, sps: _ } => FRAME_PEERS.get(),
+        _ => {
+            return Err(io::Error::new(std::io::ErrorKind::NetworkUnreachable, "This client is not a benchmarker"))
+        }
     };
 
     let Some(peer_manager) = peer_manager else {
@@ -461,6 +469,8 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
             sample_rate: _,
             channels: _,
         } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.get()),
+        StreamTypeWithArgs::BenchmarkVideo => (None, FRAME_PEERS.get()),
+        StreamTypeWithArgs::BenchmarkAudio => (None, AUDIO_PEERS.get())
     };
 
     let Some(peer_manager) = peer_manager else {
@@ -474,13 +484,6 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
     };
 
     println!("{:?}", request);
-
-    let Some(specifications) = specifications else {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "Specification manager not initialized",
-        ));
-    };
 
     // TOOO: If the ip address & ssrc is the same, remove the old peer ,then update their specs
 
@@ -524,7 +527,18 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
 
             peer_manager.add_peer(request.ssrc, media_addr, swift_peer_model);
         }
+        _ => {
+            peer_manager.add_peer(request.ssrc, media_addr, std::ptr::null_mut());
+            return Err(io::Error::new(std::io::ErrorKind::NetworkUnreachable, "Early exit. Not sending benchmarker address to other peers"))
+        },
     }
+
+    let Some(specifications) = specifications else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Specification manager not initialized",
+        ));
+    };
 
     let signaling_addr: SocketAddr = request
         .signaling_address
