@@ -20,13 +20,15 @@ pub fn get_fragments(
     let nalu_nri = payload[0] & 0x60;
     let nalu_type = payload[0] & 0x1F;
 
+    let mut buf = BytesMut::with_capacity(1500);
+
     if payload.len() <= max_fragment_size {
         let rtp_header = rtp_session.get_packet(is_last_unit, timestamp, payload.len() as u32);
 
-        let mut out = rtp_header.serialize();
-        out.extend_from_slice(payload);
+        rtp_header.serialize(&mut buf);
+        buf.extend_from_slice(payload);
 
-        payloads.push((out.freeze(), rtp_header.sequence_number));
+        payloads.push((buf.freeze(), rtp_header.sequence_number));
         return payloads;
     }
 
@@ -40,9 +42,7 @@ pub fn get_fragments(
                 current_fragment_size as u32 + 2,
             );
 
-        let mut out = BytesMut::with_capacity(2 + current_fragment_size + 32);
-
-        out.put_slice(&rtp_header.serialize());
+        rtp_header.serialize(&mut buf);
 
         /*
             +---------------+---------------+
@@ -63,7 +63,7 @@ pub fn get_fragments(
         */
 
         let b0 = 28 | nalu_nri; // 28 to indicate FU-A packet type
-        out.put_u8(b0);
+        buf.put_u8(b0);
 
         let mut b1 = nalu_type;
         if nalu_data_remaining == nalu_data_length {
@@ -73,14 +73,15 @@ pub fn get_fragments(
             // Set end bit
             b1 |= 1 << 6;
         }
-        out.put_u8(b1);
+        buf.put_u8(b1);
 
-        out.put_slice(&payload[nalu_data_index..nalu_data_index + current_fragment_size]);
+        buf.put_slice(&payload[nalu_data_index..nalu_data_index + current_fragment_size]);
 
         nalu_data_remaining -= current_fragment_size;
         nalu_data_index += current_fragment_size;
 
-        payloads.push((out.freeze(), rtp_header.sequence_number));
+        payloads.push((buf.split().freeze(), rtp_header.sequence_number));
+        buf.reserve(1500);
     }
 
     payloads

@@ -29,6 +29,8 @@ pub async fn rtp_audio_sender(
 ) {
     let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
 
+    let mut buffer =  BytesMut::with_capacity(1500);
+
     loop {
         let sample = match rx.recv().await {
             Some(s) => s,
@@ -52,11 +54,11 @@ pub async fn rtp_audio_sender(
                 .get_packet(false, sample.timestamp, sample.data.len() as u32);
 
         //println!("Created a packet");
-
-        let mut packet = header.serialize();
-        packet.put(sample.data);
+        header.serialize(&mut buffer);
+        buffer.put(sample.data);
 
         //println!("packet size: {:?}", packet.len());
+        let packet = buffer.split().freeze();
 
         for addr in peers.iter() {
             let now = SystemTime::now();
@@ -73,6 +75,9 @@ pub async fn rtp_audio_sender(
                 Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
             }
         }
+
+        buffer.reserve(1500);
+
 
         //println!("Sent a packet")
     }
