@@ -1,8 +1,9 @@
 use std::mem;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{io, sync::Arc};
 
 use bytes::Bytes;
+use csv::Writer;
 use quinn::Connection;
 use tokio::sync::mpsc;
 
@@ -45,6 +46,9 @@ pub async fn rtp_frame_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedFrame>,
 ) {
+    let mut wtr = Writer::from_path("video_send_data.csv").unwrap();
+    let now = Instant::now();
+
     loop {
         let frame = match rx.recv().await {
             Some(f) => f,
@@ -77,6 +81,14 @@ pub async fn rtp_frame_sender(
             // send each packet to every peer
             for fragment in fragments {
                 for connection in peers.iter() {
+                    let time_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+
+                    if now.elapsed().as_secs() < 10 {
+                        wtr.write_record(&[peer_manager.local_ssrc().to_string(), timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
+                    } else {
+                        wtr.flush().unwrap();
+                    }
+
                     match connection.send_datagram_wait(fragment.clone()).await {
                         Ok(_) => {}
                         Err(e) => {

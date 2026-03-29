@@ -1,10 +1,11 @@
 use std::{
     io,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
+use csv::Writer;
 use quinn::Connection;
 use tokio::sync::mpsc;
 
@@ -28,6 +29,8 @@ pub async fn rtp_audio_sender(
     mut rx: mpsc::Receiver<EncodedAudio>,
 ) {
     let mut buffer =  BytesMut::with_capacity(1500);
+    let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
+    let now = Instant::now();
 
     loop {
         let sample = match rx.recv().await {
@@ -58,6 +61,14 @@ pub async fn rtp_audio_sender(
         let packet = buffer.split().freeze();
 
         for connection in peers.iter() {
+            let time_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+
+            if now.elapsed().as_secs() < 10 {
+                wtr.write_record(&[header.ssrc.to_string(), header.timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
+            } else {
+                wtr.flush().unwrap();
+            }
+
             match connection.send_datagram_wait(packet.clone()).await {
                 Ok(_) => {}
                 Err(e) => eprintln!("Failed to send to {}: {}", connection.remote_address(), e),
