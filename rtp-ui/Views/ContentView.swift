@@ -11,8 +11,13 @@ import RTPmacos
 
 struct ContentView: View {
     @State private var viewModel = ViewModel()
-    
     @State private var peerVideoManager = PeerVideoManager()
+    
+    // MARK: Screen Recording menu
+    @State var screenRecorder = ScreenRecorder()
+    @State var userStopped = false
+    @State var disableInput = false
+    @State var recordingMenuOpen = false
     
     init () {
         // send the context to rust!
@@ -22,17 +27,35 @@ struct ContentView: View {
     
     
     var body: some View {
-        VStack(spacing: 0){
-            VideoGrid {
-                CameraView(image: $viewModel.currentFrame)
-                
-                ForEach(peerVideoManager.allPeers) { peer in
-                    peer
-                }
-            }
-            .background(Color.black)
+        HStack{
             
-            UIView()
+            VStack(spacing: 0){
+                VideoGrid {
+                    CameraView(image: $viewModel.currentFrame)
+                    
+                    ForEach(peerVideoManager.allPeers) { peer in
+                        peer
+                    }
+                }
+                .background(Color.black)
+                
+                UIView(recordingMenuOpen: $recordingMenuOpen)
+                    .frame(minHeight: 85)
+                
+            }
+            
+            
+            if recordingMenuOpen {
+                ConfigurationView(screenRecorder: screenRecorder, userStopped: $userStopped)
+                    .frame(minWidth: 280, maxWidth: 280)
+            }
+        }
+        .task {
+            if await screenRecorder.canRecord {
+                await screenRecorder.start()
+            } else {
+                disableInput = true
+            }
         }
     }
 }
