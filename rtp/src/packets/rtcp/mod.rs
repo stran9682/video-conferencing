@@ -87,8 +87,10 @@ async fn rtcp_sender(
         let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
         let seconds = time_since_epoch.as_secs() + 2_208_988_800;
-        let fraction =
-            ((time_since_epoch.subsec_micros() + 1) as f64 * (1u64 << 32) as f64 * 1.0e-6) as u32;
+
+        let nanos = time_since_epoch.subsec_nanos() as u128;
+        let fraction = ((nanos << 32) / 1_000_000_000) as u32;
+        
         let ntp = seconds << 32 | (fraction as u64);
 
         let sender_report = SenderReport {

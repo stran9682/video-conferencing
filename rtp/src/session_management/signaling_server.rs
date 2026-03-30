@@ -214,7 +214,7 @@ fn spawn_signaling_connection(stream_type: StreamType) {
     runtime().spawn(async move {
         println!("{:?} Making a request!", stream_type);
 
-        while let Err(e) = connect_to_signaling_server(host_addr_str, stream_type).await {
+        if let Err(e) = connect_to_signaling_server(host_addr_str, stream_type).await {
             eprintln!(
                 "{:?} Failed to connect to signaling server, {}",
                 stream_type, e
@@ -343,7 +343,7 @@ pub async fn connect_to_signaling_server(
     //  The addresses are redundant since you got them already
     //  hence the empty vector
 
-    println!("{}", addresses.len());
+    //println!("{}", addresses.len());
     for signaling_addr in &addresses {
         if *signaling_addr == listener().await.local_addr().unwrap().to_string() {
             continue;
