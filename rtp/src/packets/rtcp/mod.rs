@@ -47,7 +47,7 @@ async fn rtcp_sender(
     let mut first_packet = true;
 
     let clock_rate: f64 = match stream_type {
-        StreamType::Audio => 0.,
+        StreamType::Audio => 48000.,
         StreamType::Video => 90000.,
     };
 

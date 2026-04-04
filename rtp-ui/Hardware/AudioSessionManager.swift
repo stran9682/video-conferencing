@@ -44,22 +44,21 @@ class AudioManager {
         let inputFormat = AVAudioFormat(standardFormatWithSampleRate: OPUS_ENCODER_SAMPLE_RATE, channels: 1)!
         let desiredBufferSize = AVAudioFrameCount((Double(OPUS_ENCODER_DURATION_MS) / 1000.0) * OPUS_ENCODER_SAMPLE_RATE)
         
-        inputNode.installTap(onBus: 0, bufferSize: desiredBufferSize, format: inputFormat) { [weak self] buffer, _ in
-            self?.processBuffer(buffer)
+        inputNode.installTap(onBus: 0, bufferSize: desiredBufferSize, format: inputFormat) { [weak self] (buffer, when) in
+            self?.processBuffer(buffer, when.hostTime)
         }
         
         rust_send_opus_config(OPUS_ENCODER_SAMPLE_RATE, AUDIO_OUTPUT_CHANNELS)
     }
-    
-    private func processBuffer(_ buffer: AVAudioPCMBuffer) {
+
+    private func processBuffer(_ buffer: AVAudioPCMBuffer, _ when: UInt64) {
         guard let encoder = encoder else { return }
         
         do {
             var encodedData = Data(count: Int(buffer.frameLength) * MemoryLayout<Float32>.size)
             _ = try encoder.encode(buffer, to: &encodedData)
-                        
-            // TODO: Send to RUST
-            let pts = CMClockGetTime(CMClockGetHostTimeClock()).seconds * 48_000
+            
+            let pts = AVAudioTime.seconds(forHostTime: when) * 48_000
             let timestamp = UInt32(UInt64(pts) & 0xFFFFFFFF)
             
             rust_send_audio_sample([UInt8](encodedData), UInt(encodedData.count), timestamp)
