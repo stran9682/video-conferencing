@@ -45,7 +45,7 @@ pub async fn rtp_frame_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedFrame>,
 ) {
-    let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
+    let mut wtr = Writer::from_path("video_send_data.csv").unwrap();
     let mut samples = 0;
 
     loop {
@@ -80,7 +80,7 @@ pub async fn rtp_frame_sender(
             // send each packet to every peer
             for fragment in fragments {
                 for addr in peers.iter() {
-                    
+
                     let now = SystemTime::now();
                     let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
