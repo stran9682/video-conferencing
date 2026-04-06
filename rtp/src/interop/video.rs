@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{io, sync::Arc};
 
 use bytes::{BufMut, Bytes, BytesMut};
+use csv::Writer;
 use tokio::{net::UdpSocket, sync::mpsc};
 
 use crate::packets::rtp::h264::{get_fragments, get_nal_units, rtp_to_avcc_h264};
@@ -44,6 +45,9 @@ pub async fn rtp_frame_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedFrame>,
 ) {
+    let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
+    let mut samples = 0;
+
     loop {
         let frame = match rx.recv().await {
             Some(f) => f,
@@ -76,6 +80,17 @@ pub async fn rtp_frame_sender(
             // send each packet to every peer
             for fragment in fragments {
                 for addr in peers.iter() {
+                    
+                    let now = SystemTime::now();
+                    let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
+
+                    if samples < 3500 {
+                        wtr.write_record(&[peer_manager.local_ssrc().to_string(), timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
+                        samples += 1;
+                    } else {
+                        wtr.flush().unwrap();
+                    }
+
                     match socket.send_to(&fragment, addr).await {
                         Ok(_) => {}
                         Err(e) => eprintln!("Failed to send to {}: {}", addr, e),

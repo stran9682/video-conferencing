@@ -4,6 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use csv::Writer;
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{net::UdpSocket, sync::mpsc};
 
@@ -26,6 +27,9 @@ pub async fn rtp_audio_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedAudio>,
 ) {
+    let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
+    let mut samples = 0;
+
     loop {
         let sample = match rx.recv().await {
             Some(s) => s,
@@ -56,6 +60,16 @@ pub async fn rtp_audio_sender(
         //println!("packet size: {:?}", packet.len());
 
         for addr in peers.iter() {
+            let now = SystemTime::now();
+            let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
+
+            if samples < 3500 {
+                wtr.write_record(&[header.ssrc.to_string(), header.timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
+                samples += 1;
+            } else {
+                wtr.flush().unwrap();
+            }
+
             match socket.send_to(&packet, addr).await {
                 Ok(_) => {}
                 Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
