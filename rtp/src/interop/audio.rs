@@ -1,7 +1,7 @@
 use std::{
     io,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use csv::Writer;
@@ -28,7 +28,7 @@ pub async fn rtp_audio_sender(
     mut rx: mpsc::Receiver<EncodedAudio>,
 ) {
     let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
-    let mut samples = 0;
+    let now = Instant::now();
 
     loop {
         let sample = match rx.recv().await {
@@ -63,9 +63,8 @@ pub async fn rtp_audio_sender(
             let now = SystemTime::now();
             let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-            if samples < 3500 {
+            if now.elapsed().unwrap().as_secs() < 10 {
                 wtr.write_record(&[header.ssrc.to_string(), header.timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
-                samples += 1;
             } else {
                 wtr.flush().unwrap();
             }

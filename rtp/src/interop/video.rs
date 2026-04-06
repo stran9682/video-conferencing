@@ -1,5 +1,5 @@
 use std::mem;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{io, sync::Arc};
 
 use bytes::{BufMut, Bytes, BytesMut};
@@ -46,7 +46,7 @@ pub async fn rtp_frame_sender(
     mut rx: mpsc::Receiver<EncodedFrame>,
 ) {
     let mut wtr = Writer::from_path("video_send_data.csv").unwrap();
-    let mut samples = 0;
+    let now = Instant::now();
 
     loop {
         let frame = match rx.recv().await {
@@ -84,9 +84,8 @@ pub async fn rtp_frame_sender(
                     let now = SystemTime::now();
                     let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-                    if samples < 3500 {
+                    if now.elapsed().unwrap().as_secs() < 10 {
                         wtr.write_record(&[peer_manager.local_ssrc().to_string(), timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
-                        samples += 1;
                     } else {
                         wtr.flush().unwrap();
                     }
