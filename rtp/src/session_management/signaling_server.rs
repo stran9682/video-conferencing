@@ -5,10 +5,7 @@ use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
-    collections::HashSet,
-    ffi::c_void,
-    net::SocketAddr,
-    sync::{Arc, OnceLock},
+    collections::HashSet, ffi::c_void, io::ErrorKind, net::SocketAddr, sync::{Arc, OnceLock}
 };
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -429,7 +426,12 @@ async fn add_peers(
     })?;
 
     println!("Adding a peer!");
-    handle_request(&response).await?;
+    if let Err(e) = handle_request(&response).await {
+        match e.kind() {
+            ErrorKind::NetworkUnreachable => (), // Ignore this one in particular!!
+            _ => return Err(e)
+        }
+    }
 
     // TODO: establish connection with peer
     let peer_manager = match response.stream_type.to_stream_type() {
@@ -483,6 +485,7 @@ async fn add_peers(
         Err(e) => eprintln!("Couldn't create QUIC connection... {}", e),
     }
 
+    // TODO: adding more peers, this will become a problem.
     PEER_SPECIFICATIONS
         .get()
         .unwrap()
