@@ -5,7 +5,11 @@ use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
-    collections::HashSet, ffi::c_void, io::ErrorKind, net::SocketAddr, sync::{Arc, OnceLock}
+    collections::HashSet,
+    ffi::c_void,
+    io::ErrorKind,
+    net::SocketAddr,
+    sync::{Arc, OnceLock},
 };
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -80,7 +84,7 @@ impl StreamTypeWithArgs {
             } => StreamType::Audio,
             StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
             StreamTypeWithArgs::BenchmarkAudio => StreamType::Audio,
-            StreamTypeWithArgs::BenchmarkVideo => StreamType::Video
+            StreamTypeWithArgs::BenchmarkVideo => StreamType::Video,
         }
     }
 }
@@ -338,7 +342,10 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
         } => StreamType::Audio,
         StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
         _ => {
-            return Err(io::Error::new(std::io::ErrorKind::NetworkUnreachable, "Should not be receiving from benchmarker"))
+            return Err(io::Error::new(
+                std::io::ErrorKind::NetworkUnreachable,
+                "Should not be receiving from benchmarker",
+            ));
         }
     };
 
@@ -429,7 +436,7 @@ async fn add_peers(
     if let Err(e) = handle_request(&response).await {
         match e.kind() {
             ErrorKind::NetworkUnreachable => (), // Ignore this one in particular!!
-            _ => return Err(e)
+            _ => return Err(e),
         }
     }
 
@@ -476,7 +483,7 @@ async fn add_peers(
                     } => rtp_audio_receiver(connection, peer_manager, 48_000).await,
                     StreamTypeWithArgs::Video { pps: _, sps: _ } => {
                         rtp_frame_receiver(connection, peer_manager, 90_000).await
-                    },
+                    }
 
                     _ => Ok(()),
                 }
@@ -503,7 +510,10 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
         StreamType::Audio => AUDIO_PEERS.get(),
         StreamType::Video => FRAME_PEERS.get(),
         _ => {
-            return Err(io::Error::new(std::io::ErrorKind::NetworkUnreachable, "This client is not a benchmarker"))
+            return Err(io::Error::new(
+                std::io::ErrorKind::NetworkUnreachable,
+                "This client is not a benchmarker",
+            ));
         }
     };
 
@@ -557,7 +567,7 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
             channels: _,
         } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.get()),
         StreamTypeWithArgs::BenchmarkVideo => (None, FRAME_PEERS.get()),
-        StreamTypeWithArgs::BenchmarkAudio => (None, AUDIO_PEERS.get())
+        StreamTypeWithArgs::BenchmarkAudio => (None, AUDIO_PEERS.get()),
     };
 
     let Some(peer_manager) = peer_manager else {
@@ -615,9 +625,12 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
             peer_manager.add_peer_data(request.ssrc, swift_peer_model);
         }
         _ => {
-            peer_manager.add_peer_data(request.ssrc,std::ptr::null_mut());
-            return Err(io::Error::new(std::io::ErrorKind::NetworkUnreachable, "Early exit. Not sending benchmarker address to other peers"))
-        },
+            peer_manager.add_peer_data(request.ssrc, std::ptr::null_mut());
+            return Err(io::Error::new(
+                std::io::ErrorKind::NetworkUnreachable,
+                "Early exit. Not sending benchmarker address to other peers",
+            ));
+        }
     }
 
     let Some(specifications) = specifications else {

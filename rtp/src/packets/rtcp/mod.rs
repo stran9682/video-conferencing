@@ -89,13 +89,13 @@ async fn rtcp_sender(
         let seconds = time_since_epoch.as_secs() + 2_208_988_800;
         let nanos = time_since_epoch.subsec_nanos() as u128;
         let fraction = ((nanos << 32) / 1_000_000_000) as u32;
-        
+
         let ntp = seconds << 32 | (fraction as u64);
 
         let sender_report = SenderReport {
             ssrc: peer_manager.local_ssrc(),
             ntp_time: ntp,
-            rtp_time: unsafe { (swift_send_cmclocktime() * clock_rate) as u32 },
+            rtp_time: unsafe { (swift_send_cmclocktime() * clock_rate) as u32 }, // TODO fix this up for audio
             packet_count: peer_manager.rtp_session.get_num_packets_generated(),
             octet_count: peer_manager.rtp_session.get_num_octets_sent(),
             reports: peer_manager.get_reception_reports(),
@@ -146,14 +146,16 @@ async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -
        calculate next RTCP time to send
 
     */
-    let mut buffer =  BytesMut::with_capacity(1500);
+    let mut buffer = BytesMut::with_capacity(1500);
 
     loop {
-        let (bytes_read, _) = socket.recv_from(
-            unsafe { buffer.spare_capacity_mut().assume_init_mut() })
+        let (bytes_read, _) = socket
+            .recv_from(unsafe { buffer.spare_capacity_mut().assume_init_mut() })
             .await?;
 
-        unsafe { buffer.set_len(bytes_read); }
+        unsafe {
+            buffer.set_len(bytes_read);
+        }
 
         let mut packet = buffer.split();
 

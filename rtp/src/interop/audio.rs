@@ -1,7 +1,7 @@
 use std::{
     io,
     sync::Arc,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
@@ -28,9 +28,9 @@ pub async fn rtp_audio_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedAudio>,
 ) {
-    let mut buffer =  BytesMut::with_capacity(1500);
+    let mut buffer = BytesMut::with_capacity(1500);
     let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
-    let now = Instant::now();
+    let mut lines: Vec<Vec<String>> = Vec::with_capacity(40);
 
     loop {
         let sample = match rx.recv().await {
@@ -61,13 +61,15 @@ pub async fn rtp_audio_sender(
         let packet = buffer.split().freeze();
 
         for connection in peers.iter() {
-            let time_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+            let time_since_epoch = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap();
 
-            if now.elapsed().as_secs() < 10 {
-                wtr.write_record(&[header.ssrc.to_string(), header.timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
-            } else {
-                wtr.flush().unwrap();
-            }
+            lines.push(vec![
+                header.ssrc.to_string(),
+                header.timestamp.to_string(),
+                time_since_epoch.as_nanos().to_string(),
+            ]);
 
             match connection.send_datagram_wait(packet.clone()).await {
                 Ok(_) => {}
@@ -75,9 +77,14 @@ pub async fn rtp_audio_sender(
             }
         }
 
+        for line in &lines {
+            wtr.write_record(&*line).unwrap();
+        }
+
+        lines.clear();
+        wtr.flush().unwrap();
+
         buffer.reserve(1500);
-
-
         //println!("Sent a packet")
     }
 }
