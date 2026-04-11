@@ -9,7 +9,7 @@ import SwiftUI
 
 struct CameraView: View {
     
-    @Binding var image: CGImage?
+    var image: CGImage?
     
     var body: some View {
         if let image = image {

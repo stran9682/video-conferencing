@@ -32,6 +32,11 @@ class PeerVideoManager {
             self.peers.removeValue(forKey: ssrc)
         }
     }
+    
+    func registerToRust() {
+        let refcon = Unmanaged.passRetained(self).toOpaque()
+        rust_send_video_callback(refcon)
+    }
 }
 
 @_cdecl("swift_receive_pps_sps")

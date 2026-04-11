@@ -9,9 +9,6 @@ import SwiftUI
 import Darwin
 
 struct UIView: View {
-    
-    @Binding var recordingMenuOpen: Bool
-    
     var body: some View {
         HStack {
             Button(action: {
@@ -27,16 +24,6 @@ struct UIView: View {
             Spacer()
             
             Button(action: {
-                recordingMenuOpen = !recordingMenuOpen
-            }) {
-                Label("record", systemImage: "record.circle")
-                    .padding(10)
-                    .background(.gray.opacity(0.3))
-                    .cornerRadius(10)
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            Button(action: {
                 print("HI")
             }) {
                 Label("Copy Invite", systemImage: "person.crop.circle.badge.plus")
@@ -50,10 +37,4 @@ struct UIView: View {
         .background(.gray.opacity(0.01))
 
     }
-}
-
-#Preview {
-
-    @Previewable @State var recordingMenuOpen: Bool = false
-    UIView(recordingMenuOpen: $recordingMenuOpen)
 }

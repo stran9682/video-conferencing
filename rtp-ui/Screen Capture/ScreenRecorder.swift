@@ -42,11 +42,6 @@ class ScreenRecorder: NSObject {
     var contentSize = CGSize(width: 1, height: 1)
     private var scaleFactor: Int { Int(NSScreen.main?.backingScaleFactor ?? 2) }
     
-    /// A view that renders the screen content.
-//    lazy var capturePreview: CapturePreview = {
-//        CapturePreview()
-//    }()
-    
     private var availableApps = [SCRunningApplication]()
     private(set) var availableDisplays = [SCDisplay]()
     private(set) var availableWindows = [SCWindow]()
@@ -124,24 +119,12 @@ class ScreenRecorder: NSObject {
             isSetup = true
         }
         
-        do {
-            let config = streamConfiguration
-            let filter = contentFilter
-            // Update the running state.
-            isRunning = true
-            // Start the stream and await new video frames.
-            for try await frame in captureEngine.startCapture(configuration: config, filter: filter) {
-                //capturePreview.updateFrame(frame)
-                if contentSize != frame.size {
-                    // Update the content size if it changed.
-                    contentSize = frame.size
-                }
-            }
-        } catch {
-            logger.log("\(error.localizedDescription)")
-            // Unable to start the stream. Set the running state to false.
-            isRunning = false
-        }
+        let config = streamConfiguration
+        let filter = contentFilter
+        // Update the running state.
+        isRunning = true
+        // Start the stream and await new video frames.
+        captureEngine.startCapture(configuration: config, filter: filter)
     }
     
     /// Stops capturing screen content.

@@ -130,6 +130,7 @@ struct ConfigurationView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 60)
         }
+        .background(Color(red: 42/255, green: 41/255, blue: 48/255))
     }
 }
 

@@ -9,6 +9,39 @@ import SwiftUI
 import RTPmacos
 
 
+struct PersonalView: View {
+    var viewModel: ViewModel
+    
+    var body: some View {
+        CameraView(image: viewModel.currentFrame)
+    }
+}
+
+struct PeerVideoView: View {
+    var manager: PeerVideoManager
+    
+    var body: some View {
+        ForEach(manager.allPeers) { peer in
+            peer
+        }
+    }
+}
+
+struct VideoView: View {
+    var peerVideoManager: PeerVideoManager
+    var viewModel: ViewModel
+    
+    var body: some View {
+        VideoGrid {
+            PersonalView(viewModel: viewModel)
+            
+            PeerVideoView(manager: peerVideoManager)
+        }
+        .background(Color.black)
+    }
+}
+
+
 struct ContentView: View {
     @State private var viewModel = ViewModel()
     @State private var peerVideoManager = PeerVideoManager()
@@ -19,29 +52,13 @@ struct ContentView: View {
     @State var disableInput = false
     @State var recordingMenuOpen = false
     
-    init () {
-        // send the context to rust!
-        let refcon = Unmanaged.passRetained(peerVideoManager).toOpaque()
-        rust_send_video_callback(refcon)
-    }
-    
     var body: some View {
-        HStack{
-            
+        HStack(spacing: 0){
             VStack(spacing: 0){
-                VideoGrid {
-                    CameraView(image: $viewModel.currentFrame)
-                    
-                    ForEach(peerVideoManager.allPeers) { peer in
-                        peer
-                    }
-                }
-                .background(Color.black)
+                VideoView(peerVideoManager: peerVideoManager, viewModel: viewModel)
                 
-                UIView(recordingMenuOpen: $recordingMenuOpen)
-                
+                UIView()
             }
-            
             
             if recordingMenuOpen {
                 ConfigurationView(screenRecorder: screenRecorder, userStopped: $userStopped)
@@ -50,12 +67,23 @@ struct ContentView: View {
             }
         }
         .task {
-            if await screenRecorder.canRecord {
-                await screenRecorder.start()
-            } else {
+            if await !screenRecorder.canRecord {
                 disableInput = true
             }
         }
+        .onAppear() {
+            peerVideoManager.registerToRust()
+        }
+        .toolbar(content: {
+            Button(action: {
+                recordingMenuOpen = !recordingMenuOpen
+            }) {
+                Label("record", systemImage: "record.circle")
+                    .padding(5)
+                    .cornerRadius(10)
+            }
+            .buttonStyle(PlainButtonStyle())
+        })
     }
 }
 

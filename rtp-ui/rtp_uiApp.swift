@@ -20,8 +20,10 @@ struct rtp_uiApp: App {
             else {
                 ContentView()
                     .frame(minWidth: 650, minHeight: 500)
+                    
             }
         }
         .windowResizability(.contentSize)
+        .windowToolbarStyle(.unifiedCompact)
     }
 }
