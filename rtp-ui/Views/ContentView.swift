@@ -48,7 +48,6 @@ struct ContentView: View {
     
     // MARK: Screen Recording menu
     @State var screenRecorder = ScreenRecorder()
-    @State var userStopped = false
     @State var disableInput = false
     @State var recordingMenuOpen = false
     
@@ -61,7 +60,7 @@ struct ContentView: View {
             }
             
             if recordingMenuOpen {
-                ConfigurationView(screenRecorder: screenRecorder, userStopped: $userStopped)
+                ConfigurationView(screenRecorder: screenRecorder)
                     .frame(minWidth: 280, maxWidth: 280)
                     .disabled(disableInput)
             }
@@ -69,6 +68,8 @@ struct ContentView: View {
         .task {
             if await !screenRecorder.canRecord {
                 disableInput = true
+            } else {
+                await screenRecorder.monitorAvailableContent()
             }
         }
         .onAppear() {

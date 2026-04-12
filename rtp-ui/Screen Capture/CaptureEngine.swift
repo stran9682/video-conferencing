@@ -15,45 +15,38 @@ class CaptureEngine: NSObject {
     private let audioSampleBufferQueue = DispatchQueue(label: "com.example.apple-samplecode.AudioSampleBufferQueue")
     private let micSampleBufferQueue = DispatchQueue(label: "com.example.apple-samplecode.MicSampleBufferQueue")
     
-    func startCapture(configuration: SCStreamConfiguration, filter: SCContentFilter) {
-        // The stream output object. Avoid reassigning it to a new object every time startCapture is called.
-
+    func startCapture(configuration: SCStreamConfiguration, filter: SCContentFilter) async {
+        guard stream == nil else { return }
+        
         do {
             stream = SCStream(filter: filter, configuration: configuration, delegate: self)
             
             // Add a stream output to capture screen content.
+            if configuration.captureMicrophone {
+                try stream?.addStreamOutput(self, type: .microphone, sampleHandlerQueue: micSampleBufferQueue)
+            }
+            
+            if configuration.capturesAudio {
+                try stream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioSampleBufferQueue)
+            }
+            
             try stream?.addStreamOutput(self, type: .screen, sampleHandlerQueue: videoSampleBufferQueue)
-            try stream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioSampleBufferQueue)
-            try stream?.addStreamOutput(self, type: .microphone, sampleHandlerQueue: micSampleBufferQueue)
-            stream?.startCapture()
+            
+            try await stream?.startCapture()
         } catch {
-            fatalError("Failed to start stream: \(error)")
+            print("Failed to start stream: \(error)")
         }
     }
     
     func stopCapture() async {
+        guard let stream = self.stream else { return }
         do {
-            try await stream?.stopCapture()
+            try await stream.stopCapture()
+            self.stream = nil
         } catch {
-           fatalError("Failed to stop stream: \(error)")
+           print("Failed to stop stream: \(error)")
+            self.stream = nil
         }
-    }
-    
-    func update(configuration: SCStreamConfiguration, filter: SCContentFilter) async {
-        do {
-            try await stream?.updateConfiguration(configuration)
-            try await stream?.updateContentFilter(filter)
-        } catch {
-            fatalError("Failed to update the stream session: \(String(describing: error))")
-        }
-    }
-    
-    func addRecordOutputToStream(_ recordingOutput: SCRecordingOutput) async throws {
-        try self.stream?.addRecordingOutput(recordingOutput)
-    }
-    
-    func stopRecordingOutputForStream(_ recordingOutput: SCRecordingOutput) throws {
-        try self.stream?.removeRecordingOutput(recordingOutput)
     }
 }
 
@@ -66,24 +59,29 @@ extension CaptureEngine: SCStreamOutput, SCStreamDelegate {
                 of outputType: SCStreamOutputType
     ) {
         // Return early if the sample buffer is invalid.
+        
+        print("Recieved a sample buffer!")
+        
         guard sampleBuffer.isValid else { return }
         
-
+        print("output type is \(outputType)")
+        
         // Determine which type of data the sample buffer contains.
 //        switch outputType {
 //        case .screen:
-//            // TODO: Something here!
+//            streamManager.videoInput.append(sampleBuffer)
 //        case .audio:
-//            // TODO: And something here!
+//            streamManager.audioInput.append(sampleBuffer)
 //        case .microphone:
-//            // TODO: And also something here!
+//            streamManager.micInput.append(sampleBuffer)
 //        @unknown default:
-//            fatalError("Encountered unknown stream output type: \(outputType)")
+//            print("Hmm, I don't know what this is: \(outputType)")
 //        }
     }
     
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         // Perhaps something here?
+        print(error)
     }
 }
 

@@ -16,7 +16,6 @@ struct ConfigurationView: View {
     private let alignmentOffset: CGFloat = 10
     
     @Bindable var screenRecorder: ScreenRecorder
-    @Binding var userStopped: Bool
     @State var showPickerSettingsView = false
     @State private var isRecordingActive = false
     
@@ -74,55 +73,23 @@ struct ConfigurationView: View {
                 Toggle("Capture audio", isOn: $screenRecorder.isAudioCaptureEnabled)
                 Toggle("Exclude app audio", isOn: $screenRecorder.isAppAudioExcluded)
                     .disabled(screenRecorder.isAppExcluded)
-                
-                
-                Spacer()
-                    .frame(height: 20)
-                
-                HeaderView("Record and Save Output")
-                HStack {
-                    Toggle("Add screen recording output", isOn: $screenRecorder.isRecordingStream)
-                    // Simple screen recording indicator
-                    VStack {
-                        if screenRecorder.isRecordingStream {
-                            Image(systemName: "circle.fill")
-                                .resizable()
-                                .scaledToFit()
-                                .brightness(isRecordingActive ? 0.1: 0.0)
-                                .foregroundColor(.red)
-                                .onAppear() {
-                                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                                        isRecordingActive = true
-                                    }
-                                }
-                        }
-                    }
-                    .frame(width: 10, height: 10)
-                }
-                Button("View Recordings", systemImage: "folder.fill", action: screenRecorder.openRecordingFolder)
-                
             }
             .padding()
             
             Spacer()
             HStack {
                 Button {
-                    Task { await screenRecorder.start() }
-                    // Fades the paused screen out.
-                    withAnimation(Animation.easeOut(duration: 0.25)) {
-                        userStopped = false
+                    Task {
+                        await screenRecorder.start()
                     }
                 } label: {
                     Text("Start Capture")
                 }
                 .disabled(screenRecorder.isRunning)
                 Button {
-                    Task { await screenRecorder.stop() }
-                    // Fades the paused screen in.
-                    withAnimation(Animation.easeOut(duration: 0.25)) {
-                        userStopped = true
+                    Task {
+                        await screenRecorder.stop()
                     }
-
                 } label: {
                     Text("Stop Capture")
                 }
@@ -153,9 +120,8 @@ struct HeaderView: View {
 }
 
 #Preview {
-    @Previewable @State var userStopped = false
     var screenRecorder = ScreenRecorder()
     
-    ConfigurationView(screenRecorder: screenRecorder, userStopped: $userStopped )
+    ConfigurationView(screenRecorder: screenRecorder)
         .frame(minWidth: 280, maxWidth: 280)
 }

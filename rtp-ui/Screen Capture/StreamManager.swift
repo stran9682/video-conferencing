@@ -8,12 +8,13 @@
 import Foundation
 import AVFoundation
 
-class StreamManager: NSObject {
+class HlsWriter: NSObject {
     
-    private var videoInput: AVAssetWriterInput?
-    private var audioInput: AVAssetWriterInput?
+    public var videoInput: AVAssetWriterInput
+    public var audioInput: AVAssetWriterInput
+    public var micInput: AVAssetWriterInput
     
-    private var assetWriter: AVAssetWriter?
+    private var assetWriter: AVAssetWriter
     
     private let audioCompressionSettings: [String: Any] = [
         AVFormatIDKey: kAudioFormatMPEG4AAC,
@@ -31,13 +32,10 @@ class StreamManager: NSObject {
     private let startTimeOffset = CMTime(value: 1, timescale: 10) // 100 ms
     
     override init() {
-        super.init()
-        
         let assetWriter = AVAssetWriter(contentType: .mpeg4Movie)
         assetWriter.shouldOptimizeForNetworkUse = true
         assetWriter.outputFileTypeProfile = .mpeg4AppleHLS
         assetWriter.preferredOutputSegmentInterval = CMTime(seconds: 1, preferredTimescale: 1)
-        assetWriter.delegate = self
         assetWriter.initialSegmentStartTime = self.startTimeOffset
         
         
@@ -47,28 +45,36 @@ class StreamManager: NSObject {
         let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: self.audioCompressionSettings)
         audioInput.expectsMediaDataInRealTime = true
         
+        let micInput = AVAssetWriterInput(mediaType: .audio, outputSettings: self.audioCompressionSettings)
+        micInput.expectsMediaDataInRealTime = true
+        
         
         assetWriter.add(audioInput)
         assetWriter.add(videoInput)
+        assetWriter.add(micInput)
         
         self.audioInput = audioInput
         self.videoInput = videoInput
         self.assetWriter = assetWriter
+        self.micInput = micInput
         
-        self.assetWriter?.delegate = self
+        super.init()
+        
+        self.assetWriter.delegate = self
     }
     
     func startWriting() {
-        assetWriter?.startSession(atSourceTime: self.startTimeOffset)
+        assetWriter.startWriting()
+        assetWriter.startSession(atSourceTime: self.startTimeOffset)
     }
 }
 
-extension StreamManager: AVAssetWriterDelegate {
+extension HlsWriter: AVAssetWriterDelegate {
     func assetWriter(_ writer: AVAssetWriter,
                      didOutputSegmentData segmentData: Data,
                      segmentType: AVAssetSegmentType,
                      segmentReport: AVAssetSegmentReport?
-    ) {
+    ) {        
         switch segmentType {
         case .initialization:
             // This is your 'init.mp4'. Save it or send it to the server first.

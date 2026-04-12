@@ -22,61 +22,26 @@ class ScreenRecorder: NSObject {
     var isRunning = false
     
     // MARK: - Video Properties
-    var captureType: CaptureType = .display {
-        didSet { updateEngine() }
-    }
-    
-    var selectedDisplay: SCDisplay? {
-        didSet { updateEngine() }
-    }
-    
-    var selectedWindow: SCWindow? {
-        didSet { updateEngine() }
-    }
-    
-    var isAppExcluded = true {
-        didSet { updateEngine() }
-    }
+    var captureType: CaptureType = .display
+    var selectedDisplay: SCDisplay?
+    var selectedWindow: SCWindow?
+    var isAppExcluded = true
 
     // MARK: - SCContentSharingPicker Properties
     var contentSize = CGSize(width: 1, height: 1)
     private var scaleFactor: Int { Int(NSScreen.main?.backingScaleFactor ?? 2) }
-    
     private var availableApps = [SCRunningApplication]()
     private(set) var availableDisplays = [SCDisplay]()
     private(set) var availableWindows = [SCWindow]()
 
     // MARK: - Audio Properties
-    var isAudioCaptureEnabled = true {
-        didSet {
-            updateEngine()
-        }
-    }
+    var isAudioCaptureEnabled = true
     var microphoneId: String?
-    var isMicCaptureEnabled = false {
-        didSet {
-            updateEngine()
-        }
-    }
-    var isRecordingStream = false {
-        didSet {
-            if isRecordingStream {
-                try? initRecordingOutput()
-                Task {
-                    try await startRecordingOutput()
-                }
-            } else {
-                try? stopRecordingOutput()
-            }
-        }
-    }
-    var isAppAudioExcluded = false { didSet { updateEngine() } }
-    
-    private let recordingOutputPath: String? = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).last
-    private var recordingOutput: SCRecordingOutput?
+    var isMicCaptureEnabled = false
+    var isAppAudioExcluded = false
     
     // The object that manages the SCStream.
-    private let captureEngine = CaptureEngine()
+    private var captureEngine: CaptureEngine?
     
     private var isSetup = false
     
@@ -113,33 +78,25 @@ class ScreenRecorder: NSObject {
         // Exit early if already running.
         guard !isRunning else { return }
         
-        if !isSetup {
-            // Starting polling for available screen content.
-            await monitorAvailableContent()
-            isSetup = true
-        }
+        self.captureEngine = CaptureEngine()
         
         let config = streamConfiguration
         let filter = contentFilter
         // Update the running state.
         isRunning = true
         // Start the stream and await new video frames.
-        captureEngine.startCapture(configuration: config, filter: filter)
+        await captureEngine!.startCapture(configuration: config, filter: filter)
     }
     
     /// Stops capturing screen content.
     func stop() async {
-        guard isRunning else { return }
+        guard isRunning,
+              let captureEngine = captureEngine
+        else { return }
         await captureEngine.stopCapture()
-        try? stopRecordingOutput()
+        self.captureEngine = nil
         removeMicrophoneOutput()
         isRunning = false
-    }
-    
-    func openRecordingFolder() {
-        if let recordingOutputPath = recordingOutputPath {
-            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: recordingOutputPath)
-        }
     }
     
     private func addMicrophoneOutput() {
@@ -148,51 +105,6 @@ class ScreenRecorder: NSObject {
     private func removeMicrophoneOutput() {
         streamConfiguration.captureMicrophone = false
         streamConfiguration.microphoneCaptureDeviceID = nil
-    }
-    
-    private func initRecordingOutput() throws {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let currentDateTime = dateFormatter.string(from: Date())
-        if let recordingOutputPath = recordingOutputPath {
-            let outputPath = "\(recordingOutputPath)/recorded_output_\(currentDateTime).mp4"
-            let outputURL = URL(fileURLWithPath: outputPath)
-            let recordingConfiguration = SCRecordingOutputConfiguration()
-            recordingConfiguration.outputURL = outputURL
-            guard let recordingOutput = (SCRecordingOutput(configuration: recordingConfiguration, delegate: self) as SCRecordingOutput?)
-            else {
-                throw SCScreenRecordingError.failedToStartRecording("Failed to init recording output!")
-            }
-            logger.log("Initialized recording output with URL \(outputURL)")
-            self.recordingOutput = recordingOutput
-        }
-    }
-    
-    private func startRecordingOutput() async throws {
-        guard let recordingOutput = self.recordingOutput else {
-            throw SCScreenRecordingError.failedToStartRecording("Recording output is empty!")
-        }
-        
-        try? await captureEngine.addRecordOutputToStream(recordingOutput)
-        logger.log("Added recording output \(String(describing: self.recordingOutput)) successfully to stream")
-        recordingOutputDidStartRecording(recordingOutput)
-    }
-    
-    private func stopRecordingOutput() throws {
-        if let recordingOutput = self.recordingOutput {
-            logger.log("Stopping recording output \(recordingOutput)")
-            try? captureEngine.stopRecordingOutputForStream(recordingOutput)
-            recordingOutputDidFinishRecording(recordingOutput)
-        }
-        self.recordingOutput = nil
-    }
-    
-    private func updateEngine() {
-        guard isRunning else { return }
-        Task {
-            let filter = contentFilter
-            await captureEngine.update(configuration: streamConfiguration, filter: filter)
-        }
     }
 
     private var contentFilter: SCContentFilter {
@@ -304,19 +216,6 @@ extension SCWindow {
 extension SCDisplay {
     var displayName: String {
         "Display: \(width) x \(height)"
-    }
-}
-
-extension ScreenRecorder: SCRecordingOutputDelegate {
-    // MARK: SCRecordingOutputDelegate
-    @available(macOS 15.0, *)
-    nonisolated func recordingOutputDidStartRecording(_ recordingOutput: SCRecordingOutput) {
-        logger.log("Recording output \(recordingOutput) did start recording")
-    }
-
-    @available(macOS 15.0, *)
-    nonisolated func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
-        logger.log("Recording output \(recordingOutput) did finish recording")
     }
 }
 
