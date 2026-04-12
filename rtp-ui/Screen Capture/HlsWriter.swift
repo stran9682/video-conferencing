@@ -8,11 +8,10 @@
 import Foundation
 import AVFoundation
 
-class HlsWriter: NSObject {
+class HLSWriter: NSObject {
     
     public var videoInput: AVAssetWriterInput
     public var audioInput: AVAssetWriterInput
-    public var micInput: AVAssetWriterInput
     
     private var assetWriter: AVAssetWriter
     
@@ -35,28 +34,21 @@ class HlsWriter: NSObject {
         let assetWriter = AVAssetWriter(contentType: .mpeg4Movie)
         assetWriter.shouldOptimizeForNetworkUse = true
         assetWriter.outputFileTypeProfile = .mpeg4AppleHLS
-        assetWriter.preferredOutputSegmentInterval = CMTime(seconds: 1, preferredTimescale: 1)
+        assetWriter.preferredOutputSegmentInterval = CMTime(seconds: 6, preferredTimescale: 1)
         assetWriter.initialSegmentStartTime = self.startTimeOffset
-        
         
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: self.videoCompressionSettings)
         videoInput.expectsMediaDataInRealTime = true
         
         let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: self.audioCompressionSettings)
         audioInput.expectsMediaDataInRealTime = true
-        
-        let micInput = AVAssetWriterInput(mediaType: .audio, outputSettings: self.audioCompressionSettings)
-        micInput.expectsMediaDataInRealTime = true
-        
-        
+
         assetWriter.add(audioInput)
         assetWriter.add(videoInput)
-        assetWriter.add(micInput)
         
         self.audioInput = audioInput
         self.videoInput = videoInput
         self.assetWriter = assetWriter
-        self.micInput = micInput
         
         super.init()
         
@@ -67,9 +59,44 @@ class HlsWriter: NSObject {
         assetWriter.startWriting()
         assetWriter.startSession(atSourceTime: self.startTimeOffset)
     }
+    
+    func finishWriting() async {
+        await assetWriter.finishWriting()
+    }
+    
+    func appendAudio(_ buffer: CMSampleBuffer) throws {
+        try self.append(buffer: buffer, input: self.audioInput)
+    }
+    
+    func appendVideo(_ buffer: CMSampleBuffer) throws {
+        try self.append(buffer: buffer, input: self.videoInput)
+    }
+    
+    private func append(buffer: CMSampleBuffer, input: AVAssetWriterInput) throws {
+        // False if the input was not ready for more media data.
+        // ignore the result even if it is not added to the writer successfully due to the writer is not ready.
+        // Reason: since we are getting the buffer continuously, if we try to wait to append, the time lag will keep increasing.
+        guard input.isReadyForMoreMediaData else {
+            return
+        }
+        
+        // A BOOL value indicating success of appending the sample buffer. If a result of NO is returned, clients can check the value of AVAssetWriter.status to determine whether the writing operation completed, failed, or was cancelled.  If the status is AVAssetWriterStatusFailed, AVAsset.error will contain an instance of NSError that describes the failure.
+        let success = input.append(buffer)
+        if success {
+            return
+        }
+        
+        try checkError()
+    }
+    
+    private func checkError() throws {
+        if assetWriter.status == .failed, let error = assetWriter.error {
+            throw error
+        }
+    }
 }
 
-extension HlsWriter: AVAssetWriterDelegate {
+extension HLSWriter: AVAssetWriterDelegate {
     func assetWriter(_ writer: AVAssetWriter,
                      didOutputSegmentData segmentData: Data,
                      segmentType: AVAssetSegmentType,
