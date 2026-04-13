@@ -16,6 +16,8 @@ struct rtp_uiApp: App {
         WindowGroup {
             if showingJoinScreen {
                 JoinView(state: $showingJoinScreen)
+                
+                FileBrowser()
             }
             else {
                 ContentView()

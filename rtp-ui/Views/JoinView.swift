@@ -40,3 +40,8 @@ struct JoinView: View {
         .frame(minWidth: 500, minHeight: 300)
     }
 }
+
+#Preview {
+    @Previewable @State var state: Bool = true
+    JoinView(state: $state)
+}
