@@ -41,7 +41,7 @@ class ScreenRecorder: NSObject {
     var isAppAudioExcluded = false
     
     // The object that manages the SCStream.
-    private var captureEngine: CaptureEngine?
+    private var captureEngine: CaptureEngine = CaptureEngine()
     
     private var isSetup = false
     
@@ -78,33 +78,19 @@ class ScreenRecorder: NSObject {
         // Exit early if already running.
         guard !isRunning else { return }
         
-        self.captureEngine = CaptureEngine()
-        
         let config = streamConfiguration
         let filter = contentFilter
         // Update the running state.
         isRunning = true
         // Start the stream and await new video frames.
-        await captureEngine!.startCapture(configuration: config, filter: filter)
+        await captureEngine.startCapture(configuration: config, filter: filter)
     }
     
     /// Stops capturing screen content.
     func stop() async {
-        guard isRunning,
-              let captureEngine = captureEngine
-        else { return }
+        guard isRunning else { return }
         await captureEngine.stopCapture()
-        self.captureEngine = nil
-        removeMicrophoneOutput()
         isRunning = false
-    }
-    
-    private func addMicrophoneOutput() {
-        streamConfiguration.captureMicrophone = true
-    }
-    private func removeMicrophoneOutput() {
-        streamConfiguration.captureMicrophone = false
-        streamConfiguration.microphoneCaptureDeviceID = nil
     }
 
     private var contentFilter: SCContentFilter {
@@ -143,20 +129,14 @@ class ScreenRecorder: NSObject {
         streamConfig.excludesCurrentProcessAudio = isAppAudioExcluded
         streamConfig.captureMicrophone = isMicCaptureEnabled
         
-        // Configure the display content width and height.
-        if captureType == .display, let display = selectedDisplay {
-            streamConfig.width = display.width * scaleFactor
-            streamConfig.height = display.height * scaleFactor
-        }
+        streamConfig.width = 1920
+        streamConfig.height = 1080
+        streamConfig.scalesToFit = true
         
-        // Configure the window content width and height.
-        if captureType == .window, let window = selectedWindow {
-            streamConfig.width = Int(window.frame.width) * 2
-            streamConfig.height = Int(window.frame.height) * 2
-        }
+        // Set the capture interval at 30 fps.
+        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         
-        // Set the capture interval at 60 fps.
-        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        streamConfig.colorSpaceName = CGColorSpace.sRGB
         
         // Increase the depth of the frame queue to ensure high fps at the expense of increasing
         // the memory footprint of WindowServer.
