@@ -316,8 +316,7 @@ impl PeerManager {
                 io::ErrorKind::ConnectionRefused,
                 format!("Failed to connect: {}", e),
             )
-        })?;        
-        
+        })?;
 
         println!("Connection created!");
 

@@ -22,6 +22,11 @@ void run_runtime_server(enum StreamType stream);
 
 extern void swift_receive_sample(void *context, const uint8_t *audioData, uintptr_t length);
 
+void swift_upload(const uint8_t *file_path,
+                  uintptr_t file_path_len,
+                  const uint8_t *endpoint_id,
+                  uintptr_t endpoint_id_length);
+
 extern void swift_receive_frame(void *context, void *frameData, uintptr_t frameDataLength);
 
 extern double swift_send_cmclocktime(void);

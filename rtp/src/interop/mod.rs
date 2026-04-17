@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod upload;
 pub mod video;
 use rand::Rng;
 

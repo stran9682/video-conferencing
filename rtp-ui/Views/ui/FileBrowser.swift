@@ -7,25 +7,20 @@
 import SwiftUI
 import QuickLook
 import SwiftUI
+import RTPmacos
 
 struct FileBrowser: View {
     private var files = getFiles() ?? []
     
     @State private var selectedURL: URL?
-    @State var exportMenuOpen: Bool = false
     
     var body: some View {
         
         if !files.isEmpty {
             List(files, id: \.self) { file in
-                FileRow(url: file, selectedURL: $selectedURL, exportMenuOpen: $exportMenuOpen)
+                FileRow(url: file, selectedURL: $selectedURL)
             }
             .quickLookPreview($selectedURL)
-            .overlay(content: {
-                if exportMenuOpen {
-                    Text("YO")
-                }
-            })
         }
         else {
             Text("No files found.")
@@ -37,39 +32,50 @@ struct FileRow: View {
     
     var url : URL
     @Binding var selectedURL : URL?
-    @Binding var exportMenuOpen: Bool
+    @State var exportMenuOpen: Bool = false
+    @State var endpointAddress: String = ""
   
     
     var body: some View {
-        HStack {
-            Button(action: {
-                selectedURL = url
-            }) {
-                Label(url.lastPathComponent, systemImage: "play.circle")
-                    .padding(5)
-                    .cornerRadius(10)
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            Spacer()
-            
-            Button(action: {
+        VStack {
+            HStack(alignment: .top) {
+                Button(action: {
+                    selectedURL = url
+                }) {
+                    Label(url.lastPathComponent, systemImage: "play.circle")
+                        .padding(5)
+                }
+                .buttonStyle(PlainButtonStyle())
                 
-            }) {
-                Label("Share", systemImage: "person.badge.plus")
-                    .padding(5)
-                    .cornerRadius(10)
+                Spacer()
+                
+                Button(action: {
+                    exportMenuOpen = !exportMenuOpen
+                }) {
+                    Label("Upload", systemImage: "paperplane.fill")
+                        .padding(5)
+                        .cornerRadius(10)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
             
-            Button(action: {
-                exportMenuOpen = !exportMenuOpen
-            }) {
-                Label("Export", systemImage: "paperplane.fill")
-                    .padding(5)
-                    .cornerRadius(10)
+            if exportMenuOpen {
+                HStack {
+                    TextField("Enter Endpoint", text: $endpointAddress)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 200)
+                    
+                    Button("Upload") {
+//                        swift_upload(
+//                            selectedURL!.absoluteString,
+//                            UInt(selectedURL!.absoluteString.count),
+//                            endpointAddress,
+//                            UInt(endpointAddress.count)
+//                        )
+                    }
+                }
             }
-            .buttonStyle(PlainButtonStyle())
+
         }
     }
 }

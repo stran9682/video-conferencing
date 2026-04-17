@@ -27,7 +27,7 @@ pub async fn rtp_audio_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedAudio>,
 ) {
-    let mut buffer =  BytesMut::with_capacity(1500);
+    let mut buffer = BytesMut::with_capacity(1500);
 
     loop {
         let sample = match rx.recv().await {
@@ -65,7 +65,6 @@ pub async fn rtp_audio_sender(
         }
 
         buffer.reserve(1500);
-
 
         //println!("Sent a packet")
     }
