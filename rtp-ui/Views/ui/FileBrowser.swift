@@ -66,12 +66,12 @@ struct FileRow: View {
                         .frame(maxWidth: 200)
                     
                     Button("Upload") {
-//                        swift_upload(
-//                            selectedURL!.absoluteString,
-//                            UInt(selectedURL!.absoluteString.count),
-//                            endpointAddress,
-//                            UInt(endpointAddress.count)
-//                        )
+                        swift_upload(
+                            url.relativePath,
+                            UInt(url.relativePath.count),
+                            endpointAddress,
+                            UInt(endpointAddress.count)
+                        )
                     }
                 }
             }

@@ -18,16 +18,17 @@ pub extern "C" fn swift_upload(
     let file_path = unsafe { slice::from_raw_parts(file_path, file_path_len) };
     let endpoint_id = unsafe { slice::from_raw_parts(endpoint_id, endpoint_id_length) };
 
-    let Ok(file_path) = str::from_utf8(file_path) else {
+    let Ok(file_path) = str::from_utf8(file_path).map(|s| s.to_string()) else {
         return;
     };
 
-    let Ok(endpoint_id) = str::from_utf8(endpoint_id) else {
+    let Ok(endpoint_id) = str::from_utf8(endpoint_id).map(|s| s.to_string()) else {
         return;
     };
+    println!("{file_path} ::: {endpoint_id}");
 
     runtime().spawn(async move {
-        if let Err(e) = upload(file_path.to_string(), endpoint_id.to_string()).await {
+        if let Err(e) = upload(file_path, endpoint_id).await {
             eprint!("{e}");
         }
     });
@@ -47,7 +48,7 @@ async fn upload(file_path: String, endpoint_id: String) -> io::Result<()> {
         ));
     };
 
-    let remote: PublicKey = PublicKey::from_str(&endpoint_id).map_err(|e| {
+    let remote: PublicKey = PublicKey::from_str(&endpoint_id.trim()).map_err(|e| {
         io::Error::new(
             io::ErrorKind::AddrNotAvailable,
             format!("Could not convert input to hash: {}", e),
