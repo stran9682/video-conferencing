@@ -28,7 +28,6 @@ pub async fn rtp_audio_sender(
     mut rx: mpsc::Receiver<EncodedAudio>,
 ) {
     let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
-    let now = Instant::now();
 
     loop {
         let sample = match rx.recv().await {
@@ -63,11 +62,11 @@ pub async fn rtp_audio_sender(
             let now = SystemTime::now();
             let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-            if now.elapsed().unwrap().as_secs() < 10 {
-                wtr.write_record(&[header.ssrc.to_string(), header.timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
-            } else {
-                wtr.flush().unwrap();
-            }
+            wtr.write_record(
+                &[header.ssrc.to_string(), 
+                header.sequence_number.to_string(), 
+                time_since_epoch.as_nanos().to_string()]
+            ).unwrap();
 
             match socket.send_to(&packet, addr).await {
                 Ok(_) => {}

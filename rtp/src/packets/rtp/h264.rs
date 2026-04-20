@@ -9,7 +9,7 @@ pub fn get_fragments(
     rtp_session: &RTPSession,
     is_last_unit: bool,
     timestamp: u32,
-) -> Vec<Bytes> {
+) -> Vec<(Bytes, u16)> {
     let mut payloads = Vec::new();
 
     let max_fragment_size = 1200; // low key a magic number...
@@ -26,7 +26,7 @@ pub fn get_fragments(
         let mut out = rtp_header.serialize();
         out.extend_from_slice(payload);
 
-        payloads.push(out.freeze());
+        payloads.push((out.freeze(), rtp_header.sequence_number));
         return payloads;
     }
 
@@ -38,12 +38,11 @@ pub fn get_fragments(
                 is_last_unit && max_fragment_size >= nalu_data_remaining, // VERY last one
                 timestamp,
                 current_fragment_size as u32 + 2,
-            )
-            .serialize(); // this will move the sequence number by 1
+            );
 
-        let mut out = BytesMut::with_capacity(2 + current_fragment_size + rtp_header.len());
+        let mut out = BytesMut::with_capacity(2 + current_fragment_size + 32);
 
-        out.put_slice(&rtp_header);
+        out.put_slice(&rtp_header.serialize());
 
         /*
             +---------------+---------------+
@@ -81,7 +80,7 @@ pub fn get_fragments(
         nalu_data_remaining -= current_fragment_size;
         nalu_data_index += current_fragment_size;
 
-        payloads.push(out.freeze());
+        payloads.push((out.freeze(), rtp_header.sequence_number));
     }
 
     payloads

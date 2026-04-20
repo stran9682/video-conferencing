@@ -84,13 +84,13 @@ pub async fn rtp_frame_sender(
                     let now = SystemTime::now();
                     let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-                    if now.elapsed().unwrap().as_secs() < 10 {
-                        wtr.write_record(&[peer_manager.local_ssrc().to_string(), timestamp.to_string(), time_since_epoch.as_nanos().to_string()]).unwrap();
-                    } else {
-                        wtr.flush().unwrap();
-                    }
-
-                    match socket.send_to(&fragment, addr).await {
+                    wtr.write_record(&[
+                        peer_manager.local_ssrc().to_string(), 
+                        fragment.1.to_string(), 
+                        time_since_epoch.as_nanos().to_string()
+                    ]).unwrap();
+ 
+                    match socket.send_to(&fragment.0, addr).await {
                         Ok(_) => {}
                         Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
                     }
