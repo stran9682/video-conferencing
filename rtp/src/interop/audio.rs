@@ -67,7 +67,7 @@ pub async fn rtp_audio_sender(
 
             lines.push(vec![
                 header.ssrc.to_string(),
-                header.timestamp.to_string(),
+                header.sequence_number.to_string(),
                 time_since_epoch.as_nanos().to_string(),
             ]);
 

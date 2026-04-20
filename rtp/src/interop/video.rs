@@ -87,11 +87,11 @@ pub async fn rtp_frame_sender(
 
                     lines.push(vec![
                         peer_manager.local_ssrc().to_string(),
-                        timestamp.to_string(),
+                        fragment.1.to_string(),
                         time_since_epoch.as_nanos().to_string(),
                     ]);
 
-                    match connection.send_datagram_wait(fragment.clone()).await {
+                    match connection.send_datagram_wait(fragment.0.clone()).await {
                         Ok(_) => {}
                         Err(e) => {
                             eprintln!("Failed to send to {}: {}", connection.remote_address(), e)

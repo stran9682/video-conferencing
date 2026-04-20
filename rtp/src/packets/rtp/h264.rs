@@ -9,8 +9,8 @@ pub fn get_fragments(
     rtp_session: &RTPSession,
     is_last_unit: bool,
     timestamp: u32,
-) -> Vec<Bytes> {
-    let mut payloads = Vec::new();
+) -> Vec<(Bytes, u16)> {
+    let mut payloads: Vec<(Bytes, u16)> = Vec::new();
 
     let max_fragment_size = 1200; // low key a magic number...
     let mut nalu_data_index = 1;
@@ -28,21 +28,21 @@ pub fn get_fragments(
         rtp_header.serialize(&mut buf);
         buf.extend_from_slice(payload);
 
-        payloads.push(buf.freeze());
+        payloads.push((buf.freeze(), rtp_header.sequence_number));
         return payloads;
     }
 
     while nalu_data_remaining > 0 {
         let current_fragment_size = std::cmp::min(max_fragment_size, nalu_data_remaining);
 
-        rtp_session
+        let header = rtp_session
             .get_packet(
                 is_last_unit && max_fragment_size >= nalu_data_remaining, // VERY last one
                 timestamp,
                 current_fragment_size as u32 + 2,
-            )
-            .serialize(&mut buf); // this will move the sequence number by 1
+            );
 
+        header.serialize(&mut buf);
         /*
             +---------------+---------------+
             |0|1|2|3|4|5|6|7|0|1|2|3|4|5|6|7|
@@ -79,7 +79,7 @@ pub fn get_fragments(
         nalu_data_remaining -= current_fragment_size;
         nalu_data_index += current_fragment_size;
 
-        payloads.push(buf.split().freeze());
+        payloads.push((buf.split().freeze(), header.sequence_number));
         buf.reserve(1500);
     }
 
