@@ -17,3 +17,4 @@ serde = { version = "1.0.228", features = ["derive"] }
 quinn = "0.11.9"
 rcgen = "0.14.7"
 iroh = "0.98.0"
+anyhow = "1.0.102"

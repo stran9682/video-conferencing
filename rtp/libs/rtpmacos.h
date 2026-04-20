@@ -29,6 +29,16 @@ void swift_upload(const uint8_t *file_path,
 
 extern void swift_receive_frame(void *context, void *frameData, uintptr_t frameDataLength);
 
+extern void swift_receive_video(void *context);
+
+extern void swift_receive_hashes(void *context, const uint8_t *hashes, uintptr_t count);
+
+void swift_download(const uint8_t *hash_sequence,
+                    uintptr_t hash_sequence_length,
+                    const uint8_t *endpoint,
+                    uintptr_t endpoint_length,
+                    void *context);
+
 extern double swift_send_cmclocktime(void);
 
 extern void *swift_receive_pps_sps(void *context,

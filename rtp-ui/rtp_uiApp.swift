@@ -10,19 +10,24 @@ import SwiftUI
 @main
 struct rtp_uiApp: App {
     
-    @State var showingJoinScreen: Bool = true
+    @State var showingMainMenu: Bool = true
     
     var body: some Scene {
         WindowGroup {
-            if showingJoinScreen {
-                JoinView(state: $showingJoinScreen)
-                
-                FileBrowser()
+            if showingMainMenu {
+                NavigationSplitView(sidebar: {
+                    List {
+                        NavigationLink("Join", destination: JoinView(state: $showingMainMenu))
+                        NavigationLink("Recordings", destination: FileBrowser())
+                        NavigationLink("Remotes", destination: PlayerView())
+                    }
+                }, detail: {
+                    ContentUnavailableView("Easy breezy", systemImage: "figure.dance")
+                })
             }
             else {
                 ContentView()
                     .frame(minWidth: 650, minHeight: 500)
-                    
             }
         }
         .windowResizability(.contentSize)
