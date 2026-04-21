@@ -37,7 +37,8 @@ void swift_download(const uint8_t *hash_sequence,
                     uintptr_t hash_sequence_length,
                     const uint8_t *endpoint,
                     uintptr_t endpoint_length,
-                    void *context);
+                    void *context,
+                    bool is_hash_query);
 
 extern double swift_send_cmclocktime(void);
 

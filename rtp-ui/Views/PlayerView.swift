@@ -17,13 +17,13 @@ struct PlayerView: View {
     var body: some View {
         VStack {
             if let player {
-                VideoPlayer(player: AVQueuePlayer())
+                VideoPlayer(player: player.player)
+                    .controlSize(ControlSize.mini)
                     .frame(width: 320, height: 180, alignment: .center)
                 
                 Button {
                     isPlaying ? player.player.pause() : player.player.play()
                     isPlaying.toggle()
-                    player.player.seek(to: .zero)
                 } label: {
                     Image(systemName: isPlaying ? "stop" : "play")
                         .padding()
@@ -34,7 +34,12 @@ struct PlayerView: View {
             // Use the task modifier to defer creating the player to ensure
             // SwiftUI creates it only once when it first presents the view.
             // TODO: Pass the hashsequence hash to begin
-            player = PlaybackState(hashSequence: "cb10a7cae221a1bfcc7653c378ad5c188d6c49d399ca69b042ff854d5d386625", endpoint: "3de13357f5eba5f7bc15eeb164669f34cfb92fec5c48ebac8c4b04234914b662")
+            player = PlaybackState(hashSequence: "cb10a7cae221a1bfcc7653c378ad5c188d6c49d399ca69b042ff854d5d386625", endpoint: "3c063bbbd3fea1fc993188b48c9d3b18c503952c0f0ccae25adf1cd53a8a6f01")
+        }
+        .onDisappear {
+            let fileManager = FileManager.default
+            let path = URL.temporaryDirectory.appendingPathComponent("clips")
+            try? fileManager.removeItem(at: path)
         }
     }
 }

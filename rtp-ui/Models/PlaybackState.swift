@@ -12,6 +12,7 @@ import RTPmacos
 @Observable
 class PlaybackState {
     var player: AVQueuePlayer
+    var endpoint: String
     
     // just be careful, these are modified off the main thread,
     // don't observe them.
@@ -19,9 +20,9 @@ class PlaybackState {
     var hashes: [String] = []
     
     init(hashSequence: String, endpoint: String) {
+        self.endpoint = endpoint
         player = AVQueuePlayer()
-        player.play()
-        
+        player.automaticallyWaitsToMinimizeStalling = false
         
         NotificationCenter.default.addObserver(
             self,
@@ -37,12 +38,23 @@ class PlaybackState {
             hashSequence,
             UInt(hashSequence.count),
             endpoint, UInt(endpoint.count),
-            Unmanaged.passUnretained(self).toOpaque()
+            Unmanaged.passRetained(self).toOpaque(),
+            true
         )
     }
 
     @objc func handleClipFinished(notification: Notification) {
-        // tell rust to get the next clip
+        if clipNumber < hashes.count {
+            swift_download(
+                self.hashes[Int(self.clipNumber)],
+                UInt(self.hashes[Int(self.clipNumber)].count),
+                self.endpoint,
+                UInt(self.endpoint.count),
+                Unmanaged.passRetained(self).toOpaque(),
+                false
+            )
+            clipNumber += 1
+        }
     }
 }
 
@@ -54,30 +66,43 @@ public func swift_receive_hashes(
 ) {
     guard let context = context, let hashes = hashes else { return }
     
-    let playbackState = Unmanaged<PlaybackState>.fromOpaque(context).takeUnretainedValue()
+    let playbackState = Unmanaged<PlaybackState>.fromOpaque(context).takeRetainedValue()
     
-    for hash in stride(from: 0, to: count, by: 32) {
+    for hash in stride(from: 0, to: count, by: 64) {
         let currentChunkPtr = hashes.advanced(by: Int(hash))
-        let actualChunkSize = min(32, count - hash)
+        let actualChunkSize = min(64, count - hash)
         let buffer = UnsafeBufferPointer(start: currentChunkPtr, count: Int(actualChunkSize))
         playbackState.hashes.append(String(decoding: buffer, as: UTF8.self))
+        
+        let strHash = String(decoding: buffer, as: UTF8.self)
     }
     
     print(playbackState.hashes)
 
-    // TODO: request the first video.
+    swift_download(
+        playbackState.hashes[0],
+        UInt(playbackState.hashes[0].count),
+        playbackState.endpoint,
+        UInt(playbackState.endpoint.count),
+        Unmanaged.passRetained(playbackState).toOpaque(),    // 😤
+        false
+    )
 }
 
 @_cdecl("swift_receive_video")
 public func swift_receive_video(
     _ context: UnsafeMutableRawPointer?,
+    _ path: UnsafePointer<UInt8>?,
 ) {
-    guard let context = context else { return }
+    guard let context = context, let path else { return }
     
-    let playbackState = Unmanaged<PlaybackState>.fromOpaque(context).takeUnretainedValue()
+    let uuid = String(cString: path)
     
-    let directory = URL.documentsDirectory.appending(component: "/temp/\(playbackState.clipNumber).mp4")
-    let playerItem = AVPlayerItem(url: URL(filePath: directory.relativePath))
+    let playbackState = Unmanaged<PlaybackState>.fromOpaque(context).takeRetainedValue()
+    
+    let directory =  URL.temporaryDirectory.appendingPathComponent("\(uuid)")
+
+    let playerItem = AVPlayerItem(url: directory)
     
     DispatchQueue.main.async {
         playbackState.player.insert(playerItem, after: nil)
