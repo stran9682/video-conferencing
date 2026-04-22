@@ -22,23 +22,22 @@ void run_runtime_server(enum StreamType stream);
 
 extern void swift_receive_sample(void *context, const uint8_t *audioData, uintptr_t length);
 
+extern void swift_receive_video(void *context, const uint8_t *path);
+
+extern void swift_release_pointer(void *context);
+
+void swift_download(const uint8_t *tag,
+                    uintptr_t tag_length,
+                    const uint8_t *endpoint,
+                    uintptr_t endpoint_length,
+                    void *context);
+
 void swift_upload(const uint8_t *file_path,
                   uintptr_t file_path_len,
                   const uint8_t *endpoint_id,
                   uintptr_t endpoint_id_length);
 
 extern void swift_receive_frame(void *context, void *frameData, uintptr_t frameDataLength);
-
-extern void swift_receive_video(void *context);
-
-extern void swift_receive_hashes(void *context, const uint8_t *hashes, uintptr_t count);
-
-void swift_download(const uint8_t *hash_sequence,
-                    uintptr_t hash_sequence_length,
-                    const uint8_t *endpoint,
-                    uintptr_t endpoint_length,
-                    void *context,
-                    bool is_hash_query);
 
 extern double swift_send_cmclocktime(void);
 

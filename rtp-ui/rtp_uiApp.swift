@@ -19,7 +19,7 @@ struct rtp_uiApp: App {
                     List {
                         NavigationLink("Join", destination: JoinView(state: $showingMainMenu))
                         NavigationLink("Recordings", destination: FileBrowser())
-                        NavigationLink("Remotes", destination: PlayerView())
+                        NavigationLink("Remotes", destination: VideoSelectionView())
                     }
                 }, detail: {
                     ContentUnavailableView("Easy breezy", systemImage: "figure.dance")

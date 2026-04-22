@@ -1,7 +1,7 @@
 pub mod audio;
+pub mod download;
 pub mod upload;
 pub mod video;
-pub mod download;
 use rand::Rng;
 
 use bytes::Bytes;

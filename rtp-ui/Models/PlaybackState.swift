@@ -11,82 +11,55 @@ import RTPmacos
 
 @Observable
 class PlaybackState {
-    var player: AVQueuePlayer
-    var endpoint: String
+    // TODO: Try using an AVMutableComposition instead
+    var player: AVQueuePlayer = AVQueuePlayer()
     
-    // just be careful, these are modified off the main thread,
-    // don't observe them.
-    var clipNumber: Int32 = 0
-    var hashes: [String] = []
+    private var endpoint: String
+    private var tag: String
+    private var clipNumber: Int32 = 0
+    private var clipCount: Int32
     
-    init(hashSequence: String, endpoint: String) {
+    init(tag: String, clipCount: Int32, endpoint: String) {
         self.endpoint = endpoint
-        player = AVQueuePlayer()
+        
+        self.tag = tag  // the uuid common to all the files
+        self.clipCount = clipCount  // the total number of clips
+        
         player.automaticallyWaitsToMinimizeStalling = false
         
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleClipFinished),
-            name: .AVPlayerItemDidPlayToEndTime,
+            name: AVPlayerItem.didPlayToEndTimeNotification,
             object: nil
         )
         
-        // TODO: Start playback by passing a hash to rust
-        // TODO: Handle receiving hashes and playback state
-        
-        swift_download(
-            hashSequence,
-            UInt(hashSequence.count),
-            endpoint, UInt(endpoint.count),
-            Unmanaged.passRetained(self).toOpaque(),
-            true
-        )
+        bufferClips()
     }
 
     @objc func handleClipFinished(notification: Notification) {
-        if clipNumber < hashes.count {
-            swift_download(
-                self.hashes[Int(self.clipNumber)],
-                UInt(self.hashes[Int(self.clipNumber)].count),
-                self.endpoint,
-                UInt(self.endpoint.count),
-                Unmanaged.passRetained(self).toOpaque(),
-                false
-            )
-            clipNumber += 1
+        bufferClips()
+    }
+    
+    func bufferClips() {
+        if clipNumber > clipCount || clipCount == 0 {
+            return
         }
-    }
-}
-
-@_cdecl("swift_receive_hashes")
-public func swift_receive_hashes(
-    _ context: UnsafeMutableRawPointer?,
-    _ hashes: UnsafePointer<UInt8>?,
-    _ count: UInt
-) {
-    guard let context = context, let hashes = hashes else { return }
-    
-    let playbackState = Unmanaged<PlaybackState>.fromOpaque(context).takeRetainedValue()
-    
-    for hash in stride(from: 0, to: count, by: 64) {
-        let currentChunkPtr = hashes.advanced(by: Int(hash))
-        let actualChunkSize = min(64, count - hash)
-        let buffer = UnsafeBufferPointer(start: currentChunkPtr, count: Int(actualChunkSize))
-        playbackState.hashes.append(String(decoding: buffer, as: UTF8.self))
         
-        let strHash = String(decoding: buffer, as: UTF8.self)
+        let query = "\(tag):\(clipNumber)"
+        
+        print("Querying for \(query)")
+        
+        swift_download(
+            query,
+            UInt(query.count),
+            self.endpoint,
+            UInt(self.endpoint.count),
+            Unmanaged.passRetained(self).toOpaque(),
+        )
+        
+        clipNumber += 1
     }
-    
-    print(playbackState.hashes)
-
-    swift_download(
-        playbackState.hashes[0],
-        UInt(playbackState.hashes[0].count),
-        playbackState.endpoint,
-        UInt(playbackState.endpoint.count),
-        Unmanaged.passRetained(playbackState).toOpaque(),    // 😤
-        false
-    )
 }
 
 @_cdecl("swift_receive_video")
@@ -106,6 +79,14 @@ public func swift_receive_video(
     
     DispatchQueue.main.async {
         playbackState.player.insert(playerItem, after: nil)
-        playbackState.clipNumber += 1
     }
+}
+
+@_cdecl("swift_release_pointer")
+public func swift_receive_video(
+    _ context: UnsafeMutableRawPointer?,
+) {
+    guard let context else { return }
+    
+    let _ =  Unmanaged<PlaybackState>.fromOpaque(context).takeRetainedValue()
 }
