@@ -47,7 +47,6 @@ pub async fn rtp_frame_sender(
     mut rx: mpsc::Receiver<EncodedFrame>,
 ) {
     let mut wtr = Writer::from_path("video_send_data.csv").unwrap();
-    let mut lines: Vec<Vec<String>> = Vec::with_capacity(40);
 
     loop {
         let frame = match rx.recv().await {
@@ -81,15 +80,14 @@ pub async fn rtp_frame_sender(
             // send each packet to every peer
             for fragment in fragments {
                 for connection in peers.iter() {
-                    let time_since_epoch = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap();
+                    let now = SystemTime::now();
+                    let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-                    lines.push(vec![
-                        peer_manager.local_ssrc().to_string(),
-                        fragment.1.to_string(),
-                        time_since_epoch.as_nanos().to_string(),
-                    ]);
+                    wtr.write_record(&[
+                        peer_manager.local_ssrc().to_string(), 
+                        fragment.1.to_string(), 
+                        time_since_epoch.as_nanos().to_string()
+                    ]).unwrap();
 
                     match connection.send_datagram_wait(fragment.0.clone()).await {
                         Ok(_) => {}
@@ -101,11 +99,6 @@ pub async fn rtp_frame_sender(
             }
         }
 
-        for line in &lines {
-            wtr.write_record(&*line).unwrap();
-        }
-
-        lines.clear();
         wtr.flush().unwrap();
     }
 }
