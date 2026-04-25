@@ -1,5 +1,5 @@
 use std::mem;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use std::{io, sync::Arc};
 
 use bytes::Bytes;
@@ -96,6 +96,7 @@ pub async fn rtp_frame_receiver(
 ) -> io::Result<()> {
     // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
     println!("Starting a video receiver");
+    let instant = Instant::now();
 
     loop {
         let mut data = match connection.read_datagram().await {
@@ -113,24 +114,7 @@ pub async fn rtp_frame_receiver(
             }
         };
 
-        // there's absolutely a bug where if the time switches playout will be messed up!
-        // (ex: when there's daylight savings)
-        // but the wall clock is "technically" more stable, and less susceptible to skew
-        // bet big, take risks, that's the way.
-
-        let now = SystemTime::now();
-
-        let duration_since = now.duration_since(UNIX_EPOCH);
-
-        let duration_since = match duration_since {
-            Ok(yay) => yay,
-            Err(_) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "holy what happened??",
-                ));
-            }
-        };
+        let duration_since = instant.elapsed();
 
         let header = RTPHeader::deserialize(&mut data);
 

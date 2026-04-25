@@ -1,8 +1,4 @@
-use std::{
-    io,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{io, sync::Arc, time::Instant};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use quinn::Connection;
@@ -77,6 +73,8 @@ pub async fn rtp_audio_receiver(
 ) -> io::Result<()> {
     println!("Starting an audio receiver");
 
+    let instant = Instant::now();
+
     loop {
         let mut data = match connection.read_datagram().await {
             Ok(data) => data,
@@ -95,19 +93,7 @@ pub async fn rtp_audio_receiver(
 
         //println!("Got a packet!");
 
-        let now = SystemTime::now();
-
-        let duration_since = now.duration_since(UNIX_EPOCH);
-
-        let duration_since = match duration_since {
-            Ok(yay) => yay,
-            Err(_) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "holy what happened??",
-                ));
-            }
-        };
+        let duration_since = instant.elapsed();
 
         let header = RTPHeader::deserialize(&mut data);
 

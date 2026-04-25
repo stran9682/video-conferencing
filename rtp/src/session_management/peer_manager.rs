@@ -287,7 +287,6 @@ impl PeerManager {
     pub async fn connect_to_peer(
         &self,
         addr: SocketAddr,
-        server_name: &str,
         peer_cert: &[u8],
     ) -> io::Result<Connection> {
         let mut certs = rustls::RootCertStore::empty();

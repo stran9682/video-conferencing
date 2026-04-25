@@ -149,7 +149,7 @@ async fn network_loop_server(stream_type: StreamType) -> io::Result<()> {
         rng.next_u32() // there is a non-zero chance that SSRCs can colide...
     };
 
-    let (endpoint, server_cert) = make_server_endpoint(rtp_addr, &ssrc)?;
+    let (endpoint, server_cert) = make_server_endpoint(rtp_addr)?;
     println!("Our {:?} address: {:?}", stream_type, endpoint.local_addr());
 
     let rtcp_port = endpoint.local_addr().unwrap().port() + 1;

@@ -442,7 +442,7 @@ async fn add_peers(
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     match peer_manager
-        .connect_to_peer(media_addr, &response.ssrc.to_string(), &response.cert)
+        .connect_to_peer(media_addr, &response.cert)
         .await
     {
         Ok(connection) => {
