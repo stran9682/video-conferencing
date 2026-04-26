@@ -65,8 +65,7 @@ pub async fn rtp_audio_sender(
             let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
             wtr.write_record(
-                &[header.ssrc.to_string(), 
-                header.sequence_number.to_string(), 
+                &[header.sequence_number.to_string(), 
                 time_since_epoch.as_nanos().to_string()]
             ).unwrap();
 
