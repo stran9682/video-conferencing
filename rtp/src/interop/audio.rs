@@ -88,6 +88,7 @@ pub async fn rtp_audio_receiver(
     media_clock_rate: u32,
 ) -> io::Result<()> {
     println!("Starting an audio receiver");
+    let mut wtr = Writer::from_path("audio_receive_data.csv").unwrap();
 
     loop {
         let mut data = match connection.read_datagram().await {
@@ -125,6 +126,12 @@ pub async fn rtp_audio_receiver(
 
         let clone = Arc::clone(&connection);
         peer_manager.add_connection(&header.ssrc, clone);
+
+        wtr.write_record(&[
+            header.sequence_number.to_string(), 
+            duration_since.as_nanos().to_string()
+        ]).unwrap();
+
 
         let play_out_time = calculate_playout_time(
             &peer_manager,
