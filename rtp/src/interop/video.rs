@@ -85,7 +85,6 @@ pub async fn rtp_frame_sender(
                     let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
                     wtr.write_record(&[
-                        peer_manager.local_ssrc().to_string(), 
                         fragment.1.to_string(), 
                         time_since_epoch.as_nanos().to_string()
                     ]).unwrap();
@@ -108,6 +107,8 @@ pub async fn rtp_frame_receiver(
     let mut buffer = [0u8; 1500];
 
     // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
+    println!("Starting a video receiver");
+    let mut wtr = Writer::from_path("video_receive_data.csv").unwrap();
 
     loop {
         let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
@@ -137,13 +138,21 @@ pub async fn rtp_frame_receiver(
 
         let header = RTPHeader::deserialize(&mut data);
 
-        let play_out_time = calculate_playout_time(
-            &peer_manager,
-            duration_since,
-            media_clock_rate,
-            data,
-            &header,
-        );
+        wtr.write_record(&[
+            header.sequence_number.to_string(), 
+            duration_since.as_nanos().to_string()
+        ]).unwrap();
+
+        // disabling decoding just for testing
+        // jitter buffer WIP
+        // let play_out_time = calculate_playout_time(
+        //     &peer_manager,
+        //     duration_since,
+        //     media_clock_rate,
+        //     data,
+        //     &header,
+        // );
+        let play_out_time: Option<u32> = None; 
 
         // Send to swift
         if let Some(play_out_time) = play_out_time

@@ -89,6 +89,7 @@ pub async fn rtp_audio_receiver(
     media_clock_rate: u32,
 ) -> io::Result<()> {
     let mut buffer = [0u8; 1500];
+    let mut wtr = Writer::from_path("audio_receive_data.csv").unwrap();
 
     loop {
         let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
@@ -113,6 +114,12 @@ pub async fn rtp_audio_receiver(
         data.put_slice(&buffer[..bytes_read]);
 
         let header = RTPHeader::deserialize(&mut data);
+        
+        wtr.write_record(&[
+            header.sequence_number.to_string(), 
+            duration_since.as_nanos().to_string()
+        ]).unwrap();
+
 
         let play_out_time = calculate_playout_time(
             &peer_manager,
