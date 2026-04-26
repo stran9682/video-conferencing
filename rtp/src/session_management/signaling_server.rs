@@ -403,10 +403,16 @@ async fn add_peers(
 ) -> io::Result<()> {
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut socket = TcpStream::connect(signaling_addr).await?;
+    println!("connected!!");
 
+    let data = packet.as_bytes();
+    let len = (data.len() as u32).to_be_bytes();
+    socket.write_all(&len).await?;
     socket.write_all(packet.as_bytes()).await?;
+    println!("attempted to send");
 
     let bytes_read = socket.read(&mut buffer).await?;
+    println!("receiving here!");
 
     if bytes_read == 0 {
         return Err(io::Error::new(

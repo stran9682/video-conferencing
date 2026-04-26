@@ -7,6 +7,7 @@ use csv::Writer;
 use quinn::Connection;
 use tokio::sync::mpsc;
 
+use crate::interop::runtime;
 use crate::packets::rtp::h264::{get_fragments, get_nal_units, rtp_to_avcc_h264};
 use crate::packets::rtp::rtp::RTPHeader;
 use crate::session_management::delay_calculator::calculate_playout_time;
@@ -46,7 +47,23 @@ pub async fn rtp_frame_sender(
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedFrame>,
 ) {
-    let mut wtr = Writer::from_path("video_send_data.csv").unwrap();
+    
+
+    let (data_sender,mut data_receiver) = mpsc::channel::<(u16, u128)>(256); 
+    runtime().spawn(async move {
+        let mut wtr = Writer::from_path("video_send_data.csv").unwrap();
+
+        loop {
+            let (sequence_num, timestamp) = data_receiver.recv().await.unwrap();
+
+            wtr.write_record(&[
+                sequence_num.to_string(),
+                timestamp.to_string()
+            ]).unwrap();
+
+            wtr.flush().unwrap();
+        }   
+    });
 
     loop {
         let frame = match rx.recv().await {
@@ -83,22 +100,19 @@ pub async fn rtp_frame_sender(
                     let now = SystemTime::now();
                     let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-                    wtr.write_record(&[
-                        fragment.1.to_string(), 
-                        time_since_epoch.as_nanos().to_string()
-                    ]).unwrap();
-
-                    match connection.send_datagram_wait(fragment.0.clone()).await {
+                    match connection.send_datagram_wait(fragment.0.clone()).await{
                         Ok(_) => {}
                         Err(e) => {
                             eprintln!("Failed to send to {}: {}", connection.remote_address(), e)
                         }
                     }
+
+                    if let Err(e) = data_sender.try_send((fragment.1, time_since_epoch.as_nanos())) {
+                        eprintln!("Video Writer channel full {}", e)
+                    }
                 }
             }
         }
-
-        wtr.flush().unwrap();
     }
 }
 
@@ -109,7 +123,23 @@ pub async fn rtp_frame_receiver(
 ) -> io::Result<()> {
     // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
     println!("Starting a video receiver");
-    let mut wtr = Writer::from_path("video_receive_data.csv").unwrap();
+    
+    let (data_sender,mut data_receiver) = mpsc::channel::<(u16, u128)>(256); 
+    runtime().spawn(async move {
+        let mut wtr = Writer::from_path("video_receive_data.csv").unwrap();
+
+        loop {
+            let (sequence_num, timestamp) = data_receiver.recv().await.unwrap();
+
+            wtr.write_record(&[
+                sequence_num.to_string(),
+                timestamp.to_string()
+            ]).unwrap();
+
+            wtr.flush().unwrap();
+        }   
+    });
+
 
     loop {
         let mut data = match connection.read_datagram().await {
@@ -146,54 +176,8 @@ pub async fn rtp_frame_receiver(
         let clone = Arc::clone(&connection);
         peer_manager.add_connection(&header.ssrc, clone);
 
-        wtr.write_record(&[
-            header.sequence_number.to_string(), 
-            duration_since.as_nanos().to_string()
-        ]).unwrap();
-
-        // disabling decoding just for testing
-        // jitter buffer WIP
-        // let play_out_time = calculate_playout_time(
-        //     &peer_manager,
-        //     duration_since,
-        //     media_clock_rate,
-        //     data,
-        //     &header,
-        // );
-        let play_out_time: Option<u32> = None; 
-
-        // Send to swift
-        if let Some(play_out_time) = play_out_time
-            && header.marker
-        {
-            let Some(frame) = peer_manager.pop_node(header.ssrc, header.timestamp) else {
-                continue;
-            };
-
-            let frame_bytes: Vec<Bytes> = frame
-                .coded_data
-                .into_iter()
-                .map(|frame| frame.data)
-                .collect();
-
-            let mut frame_data = rtp_to_avcc_h264(frame_bytes);
-            let frame_data_length = frame_data.len();
-
-            let Some(context) = peer_manager.get_context(header.ssrc) else {
-                continue; // in case that the UI hasn't sent back the pointer to stream, just ignore
-            };
-
-            unsafe {
-                swift_receive_frame(
-                    context,
-                    frame_data.as_mut_ptr() as *mut std::ffi::c_void,
-                    frame_data_length,
-                );
-            }
-
-            mem::forget(frame_data);
+        if let Err(e) = data_sender.try_send((header.sequence_number, duration_since.as_nanos())) {
+            eprintln!("Video Receiver channel full: {}", e)
         }
-
-        //println!("{}: {}", addr.to_string(), bytes_read);
     }
 }
