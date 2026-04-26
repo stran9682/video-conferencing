@@ -132,27 +132,27 @@ pub async fn rtp_audio_receiver(
         ]).unwrap();
 
 
-        let play_out_time = calculate_playout_time(
-            &peer_manager,
-            duration_since,
-            media_clock_rate,
-            data,
-            &header,
-        );
+        // let play_out_time = calculate_playout_time(
+        //     &peer_manager,
+        //     duration_since,
+        //     media_clock_rate,
+        //     data,
+        //     &header,
+        // );
 
-        let Some(sample) = peer_manager.pop_node(header.ssrc, header.timestamp) else {
-            continue;
-        };
+        // let Some(sample) = peer_manager.pop_node(header.ssrc, header.timestamp) else {
+        //     continue;
+        // };
 
-        let Some(context) = peer_manager.get_context(header.ssrc) else {
-            continue; // in case that the UI hasn't sent back the pointer to stream, just ignore
-        };
+        // let Some(context) = peer_manager.get_context(header.ssrc) else {
+        //     continue; // in case that the UI hasn't sent back the pointer to stream, just ignore
+        // };
 
-        let mut audio_data = BytesMut::new();
+        // let mut audio_data = BytesMut::new();
 
-        for data in sample.coded_data {
-            audio_data.put(data.data);
-        }
+        // for data in sample.coded_data {
+        //     audio_data.put(data.data);
+        // }
 
         // unsafe {
         //     swift_receive_sample(context, audio_data.as_ptr() as *const u8, audio_data.len());
