@@ -83,16 +83,17 @@ pub async fn rtp_frame_sender(
 
                     let now = SystemTime::now();
                     let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
-
-                    wtr.write_record(&[
-                        fragment.1.to_string(), 
-                        time_since_epoch.as_nanos().to_string()
-                    ]).unwrap();
  
                     match socket.send_to(&fragment.0, addr).await {
                         Ok(_) => {}
                         Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
                     }
+
+                    wtr.write_record(&[
+                        fragment.1.to_string(), 
+                        time_since_epoch.as_nanos().to_string()
+                    ]).unwrap();
+                    wtr.flush().unwrap();
                 }
             }
         }
@@ -141,7 +142,8 @@ pub async fn rtp_frame_receiver(
         wtr.write_record(&[
             header.sequence_number.to_string(), 
             duration_since.as_nanos().to_string()
-        ]).unwrap();
+        ])?;
+        wtr.flush()?;
 
         // disabling decoding just for testing
         // jitter buffer WIP

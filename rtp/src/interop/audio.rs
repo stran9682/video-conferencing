@@ -64,15 +64,17 @@ pub async fn rtp_audio_sender(
             let now = SystemTime::now();
             let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-            wtr.write_record(
-                &[header.sequence_number.to_string(), 
-                time_since_epoch.as_nanos().to_string()]
-            ).unwrap();
-
             match socket.send_to(&packet, addr).await {
                 Ok(_) => {}
                 Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
             }
+
+            wtr.write_record(
+                &[header.sequence_number.to_string(), 
+                time_since_epoch.as_nanos().to_string()]
+            ).unwrap();
+            wtr.flush().unwrap();
+
         }
 
         buffer.reserve(1500);
@@ -92,8 +94,6 @@ pub async fn rtp_audio_receiver(
 
     loop {
         let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
-
-        //println!("Got a packet!");
 
         let now = SystemTime::now();
 
@@ -117,7 +117,8 @@ pub async fn rtp_audio_receiver(
         wtr.write_record(&[
             header.sequence_number.to_string(), 
             duration_since.as_nanos().to_string()
-        ]).unwrap();
+        ])?;
+        wtr.flush()?;
 
 
         // let play_out_time = calculate_playout_time(
