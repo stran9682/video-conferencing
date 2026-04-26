@@ -12,7 +12,7 @@ pub fn get_fragments(
 ) -> Vec<(Bytes, u16)> {
     let mut payloads: Vec<(Bytes, u16)> = Vec::new();
 
-    let max_fragment_size = 1200; // low key a magic number...
+    let max_fragment_size = 1100; // low key a magic number...
     let mut nalu_data_index = 1;
     let nalu_data_length = payload.len() - nalu_data_index;
     let mut nalu_data_remaining = nalu_data_length;

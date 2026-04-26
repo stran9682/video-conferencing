@@ -63,8 +63,7 @@ pub async fn rtp_audio_sender(
             let now = SystemTime::now();
             let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-            wtr.write_record(&[
-                peer_manager.local_ssrc().to_string(), 
+            wtr.write_record(&[ 
                 header.sequence_number.to_string(), 
                 time_since_epoch.as_nanos().to_string()
             ]).unwrap();
@@ -155,8 +154,8 @@ pub async fn rtp_audio_receiver(
             audio_data.put(data.data);
         }
 
-        unsafe {
-            swift_receive_sample(context, audio_data.as_ptr() as *const u8, audio_data.len());
-        }
+        // unsafe {
+        //     swift_receive_sample(context, audio_data.as_ptr() as *const u8, audio_data.len());
+        // }
     }
 }
