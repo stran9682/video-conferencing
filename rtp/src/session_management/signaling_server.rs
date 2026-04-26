@@ -71,8 +71,6 @@ unsafe extern "C" {
 enum StreamTypeWithArgs {
     Video { pps: Vec<u8>, sps: Vec<u8> },
     Audio { sample_rate: f64, channels: u32 },
-    BenchmarkVideo,
-    BenchmarkAudio,
 }
 
 impl StreamTypeWithArgs {
@@ -82,9 +80,7 @@ impl StreamTypeWithArgs {
                 sample_rate: _,
                 channels: _,
             } => StreamType::Audio,
-            StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
-            StreamTypeWithArgs::BenchmarkAudio => StreamType::Audio,
-            StreamTypeWithArgs::BenchmarkVideo => StreamType::Video,
+            StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video
         }
     }
 }
@@ -341,12 +337,6 @@ async fn handle_signaling_client(socket: &mut TcpStream) -> io::Result<()> {
             channels: _,
         } => StreamType::Audio,
         StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
-        _ => {
-            return Err(io::Error::new(
-                std::io::ErrorKind::NetworkUnreachable,
-                "Should not be receiving from benchmarker",
-            ));
-        }
     };
 
     let personal_args = get_specifications(request_stream_type).await?;
@@ -484,8 +474,6 @@ async fn add_peers(
                     StreamTypeWithArgs::Video { pps: _, sps: _ } => {
                         rtp_frame_receiver(connection, peer_manager, 90_000).await
                     }
-
-                    _ => Ok(()),
                 }
             });
         }
@@ -509,12 +497,6 @@ async fn write_response(media_type: StreamTypeWithArgs) -> io::Result<String> {
     let peer_manager = match media_type.to_stream_type() {
         StreamType::Audio => AUDIO_PEERS.get(),
         StreamType::Video => FRAME_PEERS.get(),
-        _ => {
-            return Err(io::Error::new(
-                std::io::ErrorKind::NetworkUnreachable,
-                "This client is not a benchmarker",
-            ));
-        }
     };
 
     let Some(peer_manager) = peer_manager else {
@@ -566,8 +548,6 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
             sample_rate: _,
             channels: _,
         } => (PEER_SPECIFICATIONS.get(), AUDIO_PEERS.get()),
-        StreamTypeWithArgs::BenchmarkVideo => (None, FRAME_PEERS.get()),
-        StreamTypeWithArgs::BenchmarkAudio => (None, AUDIO_PEERS.get()),
     };
 
     let Some(peer_manager) = peer_manager else {
@@ -623,13 +603,6 @@ async fn handle_request(request: &ServerArgs) -> io::Result<()> {
             };
 
             peer_manager.add_peer_data(request.ssrc, swift_peer_model);
-        }
-        _ => {
-            peer_manager.add_peer_data(request.ssrc, std::ptr::null_mut());
-            return Err(io::Error::new(
-                std::io::ErrorKind::NetworkUnreachable,
-                "Early exit. Not sending benchmarker address to other peers",
-            ));
         }
     }
 
