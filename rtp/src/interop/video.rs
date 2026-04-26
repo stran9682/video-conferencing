@@ -100,7 +100,7 @@ pub async fn rtp_frame_sender(
                     let now = SystemTime::now();
                     let time_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
 
-                    match connection.send_datagram_wait(fragment.0.clone()).await{
+                    match connection.send_datagram(fragment.0.clone()){
                         Ok(_) => {}
                         Err(e) => {
                             eprintln!("Failed to send to {}: {}", connection.remote_address(), e)
