@@ -9,8 +9,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{net::UdpSocket, sync::mpsc};
 
 use crate::{
-    packets::rtp::rtp::RTPHeader,
-    session_management::{delay_calculator::calculate_playout_time, peer_manager::PeerManager},
+    interop::runtime, packets::rtp::rtp::RTPHeader, session_management::{delay_calculator::calculate_playout_time, peer_manager::PeerManager}
 };
 
 unsafe extern "C" {
@@ -26,8 +25,23 @@ pub async fn rtp_audio_sender(
     socket: Arc<UdpSocket>,
     peer_manager: Arc<PeerManager>,
     mut rx: mpsc::Receiver<EncodedAudio>,
-) {
-    let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
+) {    
+    let (data_sender,mut data_receiver) = mpsc::channel::<(u16, u128)>(256); 
+    runtime().spawn(async move {
+        let mut wtr = Writer::from_path("audio_send_data.csv").unwrap();
+
+        loop {
+            let (sequence_num, timestamp) = data_receiver.recv().await.unwrap();
+
+            wtr.write_record(&[
+                sequence_num.to_string(),
+                timestamp.to_string()
+            ]).unwrap();
+
+            wtr.flush().unwrap();
+        }   
+    });
+
 
     let mut buffer =  BytesMut::with_capacity(1500);
 
@@ -69,12 +83,9 @@ pub async fn rtp_audio_sender(
                 Err(e) => eprintln!("Failed to send to {}: {}", addr, e),
             }
 
-            wtr.write_record(
-                &[header.sequence_number.to_string(), 
-                time_since_epoch.as_nanos().to_string()]
-            ).unwrap();
-            wtr.flush().unwrap();
-
+            if let Err(e) = data_sender.try_send((header.sequence_number, time_since_epoch.as_nanos())) {
+                eprintln!("Audio writer channel full: {}", e)
+            }
         }
 
         buffer.reserve(1500);
@@ -89,8 +100,23 @@ pub async fn rtp_audio_receiver(
     peer_manager: Arc<PeerManager>,
     media_clock_rate: u32,
 ) -> io::Result<()> {
-    let mut buffer = [0u8; 1500];
-    let mut wtr = Writer::from_path("audio_receive_data.csv").unwrap();
+    println!("Starting an audio receiver");
+    
+    let (data_sender,mut data_receiver) = mpsc::channel::<(u16, u128)>(256); 
+    runtime().spawn(async move {
+       let mut wtr = Writer::from_path("audio_receive_data.csv").unwrap();
+
+        loop {
+            let (sequence_num, timestamp) = data_receiver.recv().await.unwrap();
+
+            wtr.write_record(&[
+                sequence_num.to_string(),
+                timestamp.to_string()
+            ]).unwrap();
+
+            wtr.flush().unwrap();
+        }   
+    });
 
     loop {
         let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
@@ -114,37 +140,8 @@ pub async fn rtp_audio_receiver(
 
         let header = RTPHeader::deserialize(&mut data);
         
-        wtr.write_record(&[
-            header.sequence_number.to_string(), 
-            duration_since.as_nanos().to_string()
-        ])?;
-        wtr.flush()?;
-
-
-        // let play_out_time = calculate_playout_time(
-        //     &peer_manager,
-        //     duration_since,
-        //     media_clock_rate,
-        //     data,
-        //     &header,
-        // );
-
-        // let Some(sample) = peer_manager.pop_node(header.ssrc, header.timestamp) else {
-        //     continue;
-        // };
-
-        // let Some(context) = peer_manager.get_context(header.ssrc) else {
-        //     continue; // in case that the UI hasn't sent back the pointer to stream, just ignore
-        // };
-
-        // let mut audio_data = BytesMut::new();
-
-        // for data in sample.coded_data {
-        //     audio_data.put(data.data);
-        // }
-
-        // unsafe {
-        //     swift_receive_sample(context, audio_data.as_ptr() as *const u8, audio_data.len());
-        // }
+        if let Err(e) = data_sender.try_send((header.sequence_number, duration_since.as_nanos())) {
+            eprintln!("Audio receiver channel full, {}", e)
+        }
     }
 }
