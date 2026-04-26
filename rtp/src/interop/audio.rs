@@ -118,6 +118,8 @@ pub async fn rtp_audio_receiver(
         }   
     });
 
+    let mut buffer = [0u8; 1500];
+
     loop {
         let (bytes_read, _) = socket.recv_from(&mut buffer).await?;
 
