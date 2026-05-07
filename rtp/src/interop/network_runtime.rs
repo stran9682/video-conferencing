@@ -1,14 +1,36 @@
-use std::{ffi::c_void, io, slice, sync::{Arc, OnceLock}};
+use std::{
+    ffi::c_void,
+    io, slice,
+    sync::{Arc, OnceLock},
+};
 
 use bytes::Bytes;
 use dashmap::DashSet;
-use iroh::{Endpoint, endpoint::presets, protocol::{AcceptError, ProtocolHandler, Router}};
+use iroh::{
+    Endpoint,
+    endpoint::presets,
+    protocol::{AcceptError, ProtocolHandler, Router},
+};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use crate::{interop::{StreamType, audio::{EncodedAudio, rtp_audio_receiver, rtp_audio_sender}, runtime, video::{EncodedFrame, ReleaseCallback, rtp_frame_receiver, rtp_frame_sender}}, packets::{RTPSession, rtp::rtp::RTPHeader}, session_management::{peer_manager::PeerManager, signaling_server::{OpusArgs, swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer, swift_remove_video_peer}}};
-
+use crate::{
+    interop::{
+        StreamType,
+        audio::{EncodedAudio, rtp_audio_receiver, rtp_audio_sender},
+        runtime,
+        video::{EncodedFrame, ReleaseCallback, rtp_frame_receiver, rtp_frame_sender},
+    },
+    packets::rtp::rtp::RTPHeader,
+    session_management::{
+        peer_manager::PeerManager,
+        signaling_server::{
+            OpusArgs, swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer,
+            swift_remove_video_peer,
+        },
+    },
+};
 
 pub struct H264Parameters {
     pub sps: Vec<u8>,
@@ -43,14 +65,14 @@ pub extern "C" fn set_h264_args(
     pps: *const u8,
     pps_length: usize,
     sps: *const u8,
-    sps_length: usize
+    sps_length: usize,
 ) {
     let pps = unsafe { slice::from_raw_parts(pps, pps_length) };
     let sps = unsafe { slice::from_raw_parts(sps, sps_length) };
 
-    let _ = H264_PARAMETERS.set(H264Parameters { 
-        sps: pps.to_vec(), 
-        pps: sps.to_vec(), 
+    let _ = H264_PARAMETERS.set(H264Parameters {
+        sps: pps.to_vec(),
+        pps: sps.to_vec(),
     });
 }
 
@@ -62,18 +84,14 @@ pub extern "C" fn set_opus_args(sample_rate: f64, channels: u32) {
     });
 }
 
-
 #[unsafe(no_mangle)]
-pub extern "C" fn run_network_runtime(
-    endpoint_str: *const u8, 
-    endpoint_str_length: usize
-) {
+pub extern "C" fn run_network_runtime(endpoint_str: *const u8, endpoint_str_length: usize) {
     let endpoint_str = if !endpoint_str.is_null() {
         let endpoint_slice = unsafe { slice::from_raw_parts(endpoint_str, endpoint_str_length) };
 
         match str::from_utf8(endpoint_slice) {
             Ok(str) => Some(str.to_owned()),
-            Err(_) => None
+            Err(_) => None,
         }
     } else {
         None
@@ -98,7 +116,7 @@ pub extern "C" fn run_network_runtime(
     });
 }
 
-async fn network_runtime() -> anyhow::Result<()>{
+async fn network_runtime() -> anyhow::Result<()> {
     let endpoint = Endpoint::bind(presets::N0).await?;
     endpoint.online().await;
 
@@ -107,36 +125,32 @@ async fn network_runtime() -> anyhow::Result<()>{
         rng.next_u32()
     };
 
-    let audio = Arc::new(PeerManager::new(RTPSession::new(ssrc), super::StreamType::Audio));
-    let video = Arc::new(PeerManager::new(RTPSession::new(ssrc), super::StreamType::Video));
-    let rtp_session = RTP::new(audio.clone(), video.clone());
+    let peer_manager = Arc::new(PeerManager::new(ssrc, StreamType::Audio));
+    let rtp_session = RTP::new(peer_manager.clone());
 
     // Video sending task
     let (tx, rx) = mpsc::channel::<EncodedFrame>(100);
     FRAME_TX.set(tx).map_err(|_| {
         return io::Error::new(io::ErrorKind::AlreadyExists, "video stream already in use");
     })?;
-    let video = Arc::clone(&video);
+    let video = Arc::clone(&peer_manager);
     runtime().spawn(async move {
         rtp_frame_sender(video, rx).await;
     });
 
-    // Audio sending task 
+    // Audio sending task
     let (tx, rx) = mpsc::channel::<EncodedAudio>(100);
     AUDIO_TX.set(tx).map_err(|_| {
         return io::Error::new(io::ErrorKind::AlreadyExists, "video stream already in use");
     })?;
-    let audio = Arc::clone(&audio);
+    let audio = Arc::clone(&peer_manager);
     runtime().spawn(async move {
         rtp_audio_sender(audio, rx).await;
     });
 
-
     // TODO: RTCP
 
-    let node = Router::builder(endpoint)
-        .accept("rtp", rtp_session)
-        .spawn();
+    let node = Router::builder(endpoint).accept("rtp", rtp_session).spawn();
 
     anyhow::Ok(())
 }
@@ -144,16 +158,14 @@ async fn network_runtime() -> anyhow::Result<()>{
 #[derive(Debug)]
 pub struct RTP {
     peers: DashSet<String>,
-    audio: Arc::<PeerManager>,
-    video: Arc::<PeerManager>
+    peer_manager: Arc<PeerManager>,
 }
 
 impl RTP {
-    fn new (audio: Arc<PeerManager>, video: Arc<PeerManager>) -> Self {
+    fn new(peer_manager: Arc<PeerManager>) -> Self {
         Self {
             peers: DashSet::new(),
-            audio,
-            video,
+            peer_manager,
         }
     }
 }
@@ -171,8 +183,8 @@ impl ProtocolHandler for RTP {
             .await
             .map_err(|e| AcceptError::from_boxed(e.into()))?;
 
-        let request: ConnectionArgs = serde_json::from_slice(&request)
-            .map_err(|e| AcceptError::from_boxed(e.into()))?;
+        let request: ConnectionArgs =
+            serde_json::from_slice(&request).map_err(|e| AcceptError::from_boxed(e.into()))?;
 
         // These should very much be set at this point
         let h264_parameters = H264_PARAMETERS.get().unwrap();
@@ -180,18 +192,19 @@ impl ProtocolHandler for RTP {
 
         // Construct and send a response
         let response = ConnectionArgs {
-            ssrc: self.audio.local_ssrc(),
+            ssrc: self.peer_manager.local_ssrc(),
             peers: self.peers.iter().map(|r| r.clone()).collect(),
             pps: h264_parameters.pps.clone(),
             sps: h264_parameters.sps.clone(),
             sample_rate: opus_args.sample_rate,
             channels: opus_args.channels,
         };
-        
-        let response = serde_json::to_vec(&response)
-            .map_err(|e| AcceptError::from_boxed(e.into()))?;
-        
-        send.write_all(&response).await
+
+        let response =
+            serde_json::to_vec(&response).map_err(|e| AcceptError::from_boxed(e.into()))?;
+
+        send.write_all(&response)
+            .await
             .map_err(|e| AcceptError::from_boxed(e.into()))?;
         send.finish()?;
 
@@ -205,8 +218,8 @@ impl ProtocolHandler for RTP {
                 request.ssrc,
             )
         };
-        self.audio.add_peer_data(request.ssrc, swift_peer_audio);
-        self.audio.add_connection(&request.ssrc, connection.clone());
+        self.peer_manager
+            .add_peer_data(request.ssrc, swift_peer_audio, 0, StreamType::Audio);
 
         let context = PEER_VIDEO_CONTEXT.wait();
         let swift_peer_video = unsafe {
@@ -219,54 +232,56 @@ impl ProtocolHandler for RTP {
                 request.ssrc,
             )
         };
-        self.video.add_peer_data(request.ssrc, swift_peer_video);
-        self.video.add_connection(&request.ssrc, connection.clone());
-    
-        // TODO: Start a listening task to receive packets
-        // These will route to the correct task 
-        let (audio_tx, audio_rx) = mpsc::channel::<(RTPHeader, Bytes)>(100);
-        let (frame_tx, frame_rx) = mpsc::channel::<(RTPHeader, Bytes)>(100);    
+        self.peer_manager
+            .add_peer_data(request.ssrc, swift_peer_video, 3000, StreamType::Video);
+        self.peer_manager
+            .add_connection(&request.ssrc, connection.clone());
 
-        let audio = self.audio.clone();
+        // TODO: Start a listening task to receive packets
+        // These will route to the correct task
+        let (audio_tx, audio_rx) = mpsc::channel::<(RTPHeader, Bytes)>(100);
+        let (frame_tx, frame_rx) = mpsc::channel::<(RTPHeader, Bytes)>(100);
+
+        let audio = self.peer_manager.clone();
         runtime().spawn(async move {
             if let Err(e) = rtp_audio_receiver(audio_rx, audio, 48_000).await {
                 eprintln!("audio receiver failed: {}", e);
             }
         });
 
-        let video = self.video.clone();
+        let video = self.peer_manager.clone();
         runtime().spawn(async move {
             if let Err(e) = rtp_frame_receiver(frame_rx, video, 90_000).await {
                 eprintln!("frame receiver failed: {}", e);
             }
         });
-        
+
+        let peer_manager = self.peer_manager.clone();
         runtime().spawn(async move {
             loop {
                 let mut packet = match connection.read_datagram().await {
                     Ok(data) => data,
                     Err(e) => {
-                            let err = format!(
-                                "Video receiver of {} terminated {}",
-                                connection.remote_id(),
-                                e
+                        let err = format!(
+                            "Video receiver of {} terminated {}",
+                            connection.remote_id(),
+                            e
                         );
+                        remove_peer(&peer_manager, &request.ssrc);
 
                         eprintln!("{}", err);
-                        return
+                        return;
                     }
                 };
 
                 if packet[1] > 2 {
                     // TODO: Handle RTCP
-                }
-                else {
+                } else {
                     let header = RTPHeader::deserialize(&mut packet);
 
                     if header.payload_type == 0 {
                         audio_tx.send((header, packet)).await;
-                    } 
-                    else {
+                    } else {
                         frame_tx.send((header, packet)).await;
                     }
                 }
@@ -282,7 +297,7 @@ impl ProtocolHandler for RTP {
 struct ConnectionArgs {
     ssrc: u32,
     peers: Vec<String>,
-    
+
     // Video
     pps: Vec<u8>,
     sps: Vec<u8>,
@@ -362,24 +377,20 @@ pub extern "C" fn rust_send_frame(
     }
 }
 
+pub fn remove_peer(peer_manager: &Arc<PeerManager>, ssrc: &u32) {
+    let (peer_audio, peer_video) = peer_manager.remove_peer(&ssrc);
 
-pub fn remove_peer(peer_manager: &Arc<PeerManager>, ssrc: &u32, stream_type: StreamType) {
-    let peer = peer_manager.remove_peer(&ssrc);
+    unsafe {
+        swift_remove_audio_peer(
+            AUDIO_MANAGER_CONTEXT.get().unwrap().context,
+            *ssrc,
+            peer_audio.swift_peer_model,
+        );
 
-    match stream_type {
-        StreamType::Audio => unsafe {
-            swift_remove_audio_peer(
-                AUDIO_MANAGER_CONTEXT.get().unwrap().context,
-                *ssrc,
-                peer.swift_peer_model,
-            );
-        },
-        StreamType::Video => unsafe {
-            swift_remove_video_peer(
-                *ssrc,
-                PEER_VIDEO_CONTEXT.get().unwrap().context,
-                peer.swift_peer_model,
-            );
-        },
+        swift_remove_video_peer(
+            *ssrc,
+            PEER_VIDEO_CONTEXT.get().unwrap().context,
+            peer_video.swift_peer_model,
+        );
     }
 }

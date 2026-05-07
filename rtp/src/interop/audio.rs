@@ -4,7 +4,9 @@ use bytes::{BufMut, Bytes, BytesMut};
 use tokio::sync::mpsc::{self, Receiver};
 
 use crate::{
-    interop::network_runtime::remove_peer, packets::rtp::rtp::RTPHeader, session_management::{delay_calculator::calculate_playout_time, peer_manager::PeerManager}
+    interop::StreamType,
+    packets::rtp::rtp::RTPHeader,
+    session_management::{delay_calculator::calculate_playout_time, peer_manager::PeerManager},
 };
 
 unsafe extern "C" {
@@ -51,12 +53,11 @@ pub async fn rtp_audio_sender(
         //println!("packet size: {:?}", packet.len());
         let packet = buffer.split().freeze();
 
-        for (ssrc, connection) in peers.iter() {
+        for connection in peers.iter() {
             match connection.send_datagram_wait(packet.clone()).await {
                 Ok(_) => {}
                 Err(e) => {
                     eprintln!("Failed to send to {}: {}", connection.remote_id(), e);
-                    remove_peer(&peer_manager, ssrc, crate::interop::StreamType::Audio);
                 }
             }
         }
@@ -77,12 +78,15 @@ pub async fn rtp_audio_receiver(
     let instant = Instant::now();
 
     loop {
-        let (header, data) = match  audio_rx.recv().await {
+        let (header, data) = match audio_rx.recv().await {
             Some(data) => data,
             None => {
                 eprintln!("Video receiver channel closed:");
 
-                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "Video receiver channel closed"));
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionAborted,
+                    "Video receiver channel closed",
+                ));
             }
         };
 
@@ -96,13 +100,15 @@ pub async fn rtp_audio_receiver(
             media_clock_rate,
             data,
             &header,
+            StreamType::Audio,
         );
 
-        let Some(sample) = peer_manager.pop_node(header.ssrc, header.timestamp) else {
+        let Some(sample) = peer_manager.pop_node(header.ssrc, header.timestamp, StreamType::Audio)
+        else {
             continue;
         };
 
-        let Some(context) = peer_manager.get_context(header.ssrc) else {
+        let Some(context) = peer_manager.get_context(header.ssrc, StreamType::Audio) else {
             continue; // in case that the UI hasn't sent back the pointer to stream, just ignore
         };
 

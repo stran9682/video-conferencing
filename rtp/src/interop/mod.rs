@@ -1,8 +1,8 @@
 pub mod audio;
 pub mod download;
+pub mod network_runtime;
 pub mod upload;
 pub mod video;
-pub mod network_runtime;
 
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;
@@ -12,8 +12,8 @@ static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub enum StreamType {
-    Audio,
-    Video,
+    Audio = 0,
+    Video = 1,
 }
 
 pub fn runtime() -> &'static Runtime {

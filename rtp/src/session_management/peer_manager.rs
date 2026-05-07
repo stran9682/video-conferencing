@@ -1,13 +1,13 @@
 use bytes::Bytes;
 use dashmap::DashMap;
 use iroh::endpoint::Connection;
+use std::collections::VecDeque;
 use std::time::Instant;
-use std::{collections::VecDeque};
 
 use crate::interop::StreamType;
 use crate::packets::RTPSession;
 use crate::packets::rtcp::reception_report::ReceptionReport;
-use crate::session_management::delay_calculator::DelayCalculator;
+use crate::session_management::delay_calculator::PeerDelay;
 
 static WINDOW_SIZE: usize = 50;
 static MAX_DROPOUT: u16 = 3000;
@@ -77,10 +77,12 @@ pub struct Peer {
 
     /// the received number of packets when the last SR was sent
     received_prior: u32,
+
+    skew_calculator: PeerDelay,
 }
 
 impl Peer {
-    pub fn new(swift_peer_model: *mut std::ffi::c_void) -> Self {
+    pub fn new(swift_peer_model: *mut std::ffi::c_void, skew_threshold: i32) -> Self {
         Self {
             jitter: 0,
             delay_since_last_sr: None,
@@ -95,6 +97,7 @@ impl Peer {
             swift_peer_model,
             expected_prior: 0,
             received_prior: 0,
+            skew_calculator: PeerDelay::new(skew_threshold),
         }
     }
 
@@ -219,16 +222,11 @@ unsafe impl Sync for Peer {}
 
 #[derive(Debug)]
 pub struct PeerManager {
-    peers: DashMap<u32, Peer>,
-
-    // to help take the load off of peers.
-    // sending thread can just use this instead,
-    // instead of blocking the receiving
-    //peer_addresses: DashMap<u32, SocketAddr>,
-    pub rtp_session: RTPSession,
-    pub delay_calculator: DelayCalculator,
-
+    peer_video: DashMap<u32, Peer>,
+    peer_audio: DashMap<u32, Peer>,
     peer_connections: DashMap<u32, Connection>,
+
+    pub rtp_session: RTPSession,
 }
 
 impl PeerManager {
@@ -236,24 +234,21 @@ impl PeerManager {
         self.rtp_session.ssrc
     }
 
-    pub fn new(
-        rtp_session: RTPSession,
-        stream_type: StreamType,
-    ) -> Self {
+    pub fn new(ssrc: u32, stream_type: StreamType) -> Self {
+        let rtp_session = RTPSession::new(ssrc, stream_type);
+
         Self {
-            peers: DashMap::new(),
-            //peer_addresses: DashMap::new(),
-            rtp_session,
-            delay_calculator: DelayCalculator::new(match stream_type {
-                StreamType::Audio => 0,
-                StreamType::Video => 3000,
-            }),
+            peer_video: DashMap::new(),
+            peer_audio: DashMap::new(),
             peer_connections: DashMap::new(),
+            rtp_session,
         }
     }
 
-    pub fn get_context(&self, ssrc: u32) -> Option<*mut std::ffi::c_void> {
-        if let Some(peer) = self.peers.get(&ssrc) {
+    pub fn get_context(&self, ssrc: u32, stream_type: StreamType) -> Option<*mut std::ffi::c_void> {
+        let peers = self.get_peer_data(stream_type);
+
+        if let Some(peer) = peers.get(&ssrc) {
             Some(peer.swift_peer_model)
         } else {
             None
@@ -263,15 +258,14 @@ impl PeerManager {
     pub fn add_peer_data(
         &self,
         ssrc: u32,
-        //addr: SocketAddr,
         swift_peer_model: *mut std::ffi::c_void,
+        skew_threshold: i32,
+        stream_type: StreamType,
     ) -> bool {
-        let peers = &self.peers;
+        let peers = self.get_peer_data(stream_type);
 
         if !peers.contains_key(&ssrc) {
-            peers.insert(ssrc, Peer::new(swift_peer_model));
-            //self.peer_addresses.insert(ssrc, addr);
-            self.delay_calculator.add_peer(ssrc);
+            peers.insert(ssrc, Peer::new(swift_peer_model, skew_threshold));
             true
         } else {
             false
@@ -284,28 +278,34 @@ impl PeerManager {
         }
     }
 
-    pub fn remove_peer(&self, ssrc: &u32) -> Peer {
-        let (_, peer) = self.peers.remove(&ssrc).unwrap();
-        self.delay_calculator.remove_peer(ssrc);
-        //self.peer_addresses.remove(&ssrc);
+    pub fn remove_peer(&self, ssrc: &u32) -> (Peer, Peer) {
+        let (_, peer_audio) = self.peer_audio.remove(&ssrc).unwrap();
+        let (_, peer_video) = self.peer_video.remove(&ssrc).unwrap();
 
         // TODO: remove and close a connection!
         if let Some(_connection) = self.peer_connections.remove(ssrc) {
             // connection.1.close(, reason);
         }
 
-        peer
+        (peer_audio, peer_video)
     }
 
-    pub fn is_peer_timed_out(&self, ssrc: &u32) -> bool {
-        match self.peers.get(&ssrc) {
+    pub fn is_peer_timed_out(&self, ssrc: &u32, stream_type: StreamType) -> bool {
+        let peers = self.get_peer_data(stream_type);
+
+        match peers.get(&ssrc) {
             Some(peer) => peer.is_timed_out(),
             None => false,
         }
     }
 
-    pub fn peer_get_min_window(&self, ssrc: u32, difference: u32) -> Option<u32> {
-        let peers = &self.peers;
+    pub fn peer_get_min_window(
+        &self,
+        ssrc: u32,
+        difference: u32,
+        stream_type: StreamType,
+    ) -> Option<u32> {
+        let peers = self.get_peer_data(stream_type);
 
         if let Some(mut found_peer) = peers.get_mut(&ssrc) {
             Some(found_peer.set_and_get_min_window(difference))
@@ -319,20 +319,24 @@ impl PeerManager {
         ssrc: u32,
         playout_buffer_node: PlayoutBufferNode,
         fragment: Fragment,
-    ) {
-        let peers = &self.peers;
+        difference: u32,
+        stream_type: StreamType,
+    ) -> Option<i32> {
+        let peers = self.get_peer_data(stream_type);
 
         let Some(mut peer) = peers.get_mut(&ssrc) else {
-            return;
+            return None;
         };
 
         peer.add_node(playout_buffer_node, fragment);
+
+        Some(peer.skew_calculator.adjust_skew(difference))
     }
 
-    pub fn get_peers(&self) -> Vec<(u32, Connection)> {
+    pub fn get_peers(&self) -> Vec<Connection> {
         self.peer_connections
             .iter()
-            .map(|entry| (*entry.key(), entry.value().clone()))
+            .map(|entry| entry.value().clone())
             .collect()
     }
 
@@ -343,8 +347,14 @@ impl PeerManager {
             .collect()
     }
 
-    pub fn pop_node(&self, ssrc: u32, timestamp: u32) -> Option<PlayoutBufferNode> {
-        let mut peer = self.peers.get_mut(&ssrc)?;
+    pub fn pop_node(
+        &self,
+        ssrc: u32,
+        timestamp: u32,
+        stream_type: StreamType,
+    ) -> Option<PlayoutBufferNode> {
+        let peers = self.get_peer_data(stream_type);
+        let mut peer = peers.get_mut(&ssrc)?;
 
         let Some(index) = peer
             .playout_buffer
@@ -359,14 +369,22 @@ impl PeerManager {
         Some(node)
     }
 
-    pub fn update_last_sr_timestamp(&self, ssrc: u32, last_sr_timestamp: u32) {
-        if let Some(mut peer) = self.peers.get_mut(&ssrc) {
+    pub fn update_last_sr_timestamp(
+        &self,
+        ssrc: u32,
+        last_sr_timestamp: u32,
+        stream_type: StreamType,
+    ) {
+        let peers = self.get_peer_data(stream_type);
+        if let Some(mut peer) = peers.get_mut(&ssrc) {
             peer.update_last_sr_timestamp(last_sr_timestamp);
         }
     }
 
-    pub fn get_reception_reports(&self) -> Vec<ReceptionReport> {
-        self.peers
+    pub fn get_reception_reports(&self, stream_type: StreamType) -> Vec<ReceptionReport> {
+        let peers = self.get_peer_data(stream_type);
+
+        peers
             .iter()
             .map(|peer| {
                 // this isn't even funny omg
@@ -389,5 +407,14 @@ impl PeerManager {
                 }
             })
             .collect()
+    }
+
+    fn get_peer_data(&self, stream_type: StreamType) -> &DashMap<u32, Peer> {
+        let peers = match stream_type {
+            StreamType::Audio => &self.peer_audio,
+            StreamType::Video => &self.peer_video,
+        };
+
+        &peers
     }
 }

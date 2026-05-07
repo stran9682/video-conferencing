@@ -5,7 +5,7 @@ use std::{io, sync::Arc};
 use bytes::Bytes;
 use tokio::sync::mpsc::{self, Receiver};
 
-use crate::interop::network_runtime::remove_peer;
+use crate::interop::StreamType;
 use crate::packets::rtp::h264::{get_fragments, get_nal_units, rtp_to_avcc_h264};
 use crate::packets::rtp::rtp::RTPHeader;
 use crate::session_management::delay_calculator::calculate_playout_time;
@@ -76,12 +76,11 @@ pub async fn rtp_frame_sender(
 
             // send each packet to every peer
             for fragment in fragments {
-                for (ssrc, connection) in peers.iter() {
+                for connection in peers.iter() {
                     match connection.send_datagram_wait(fragment.clone()).await {
                         Ok(_) => {}
                         Err(e) => {
                             eprintln!("Failed to send to {}: {}", connection.remote_id(), e);
-                            remove_peer(&peer_manager, ssrc, crate::interop::StreamType::Video);
                         }
                     }
                 }
@@ -100,12 +99,15 @@ pub async fn rtp_frame_receiver(
     let instant = Instant::now();
 
     loop {
-        let (header, data) = match  frame_rx.recv().await {
+        let (header, data) = match frame_rx.recv().await {
             Some(data) => data,
             None => {
                 eprintln!("Video receiver channel closed:");
 
-                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "Video receiver channel closed"));
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionAborted,
+                    "Video receiver channel closed",
+                ));
             }
         };
 
@@ -117,13 +119,16 @@ pub async fn rtp_frame_receiver(
             media_clock_rate,
             data,
             &header,
+            StreamType::Video,
         );
 
         // Send to swift
         if let Some(play_out_time) = play_out_time
             && header.marker
         {
-            let Some(frame) = peer_manager.pop_node(header.ssrc, header.timestamp) else {
+            let Some(frame) =
+                peer_manager.pop_node(header.ssrc, header.timestamp, StreamType::Video)
+            else {
                 continue;
             };
 
@@ -136,7 +141,7 @@ pub async fn rtp_frame_receiver(
             let mut frame_data = rtp_to_avcc_h264(frame_bytes);
             let frame_data_length = frame_data.len();
 
-            let Some(context) = peer_manager.get_context(header.ssrc) else {
+            let Some(context) = peer_manager.get_context(header.ssrc, StreamType::Video) else {
                 continue; // in case that the UI hasn't sent back the pointer to stream, just ignore
             };
 

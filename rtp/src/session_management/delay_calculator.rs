@@ -4,6 +4,7 @@ use bytes::Bytes;
 use dashmap::DashMap;
 
 use crate::{
+    interop::StreamType,
     packets::rtp::rtp::RTPHeader,
     session_management::peer_manager::{Fragment, PeerManager, PlayoutBufferNode},
 };
@@ -26,7 +27,7 @@ impl PeerDelay {
         }
     }
 
-    fn adjust_skew(&mut self, difference: u32) -> i32 {
+    pub fn adjust_skew(&mut self, difference: u32) -> i32 {
         if self.first_time {
             self.first_time = false;
             self.delay_estimate = difference;
@@ -89,6 +90,7 @@ pub fn calculate_playout_time(
     media_clock_rate: u32,
     data: Bytes,
     rtp_header: &RTPHeader,
+    stream_type: StreamType,
 ) -> Option<u32> {
     /*
         Calculating Base Playout time:
@@ -110,7 +112,7 @@ pub fn calculate_playout_time(
     // offset = Min(d(n-w)...d(n))
     // in the case when arrival time is smaller than timestamp.
     // wraparound comparison is handled here.
-    let offset = peer_manager.peer_get_min_window(rtp_header.ssrc, difference)?;
+    let offset = peer_manager.peer_get_min_window(rtp_header.ssrc, difference, stream_type)?;
 
     // base playout time = Timestamp + offset
     let base_playout_time = rtp_header.timestamp.wrapping_add(offset);
@@ -125,12 +127,13 @@ pub fn calculate_playout_time(
 
     let fragment = Fragment::new(rtp_header.sequence_number, data);
 
-    peer_manager.add_playout_node_to_peer(rtp_header.ssrc, node, fragment);
-
-    // TODO: Something with this!!
-    let adjustment = peer_manager
-        .delay_calculator
-        .adjust_skew(rtp_header.ssrc, difference);
+    let adjustment = peer_manager.add_playout_node_to_peer(
+        rtp_header.ssrc,
+        node,
+        fragment,
+        difference,
+        stream_type,
+    );
 
     Some(base_playout_time)
 }

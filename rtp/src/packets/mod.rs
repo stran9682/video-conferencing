@@ -1,4 +1,4 @@
-use crate::packets::rtp::rtp::RTPHeader;
+use crate::{interop::StreamType, packets::rtp::rtp::RTPHeader};
 use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 
 pub mod rtcp;
@@ -9,17 +9,19 @@ pub struct RTPSession {
     current_sequence_num: AtomicU16,
     packets_generated: AtomicU32,
     octets_sent: AtomicU32, // this is going to be same for every peer
+    stream_type: StreamType,
 
     pub ssrc: u32,
 }
 
 impl RTPSession {
-    pub fn new(ssrc: u32) -> Self {
+    pub fn new(ssrc: u32, stream_type: StreamType) -> Self {
         Self {
             octets_sent: AtomicU32::new(0),
             current_sequence_num: AtomicU16::new(0),
             packets_generated: AtomicU32::new(0),
             ssrc,
+            stream_type,
         }
     }
 
@@ -33,7 +35,7 @@ impl RTPSession {
             padding: false,
             extension: false,
             marker: is_last_unit,
-            payload_type: 0,
+            payload_type: self.stream_type as u8,
             sequence_number: self.current_sequence_num.load(Ordering::Relaxed),
             timestamp: timestamp,
             ssrc: self.ssrc,

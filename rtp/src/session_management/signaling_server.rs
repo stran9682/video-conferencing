@@ -1,12 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::
-    ffi::c_void
-;
+use std::ffi::c_void;
 
-use crate::
-    interop::StreamType
-;
-
+use crate::interop::StreamType;
 
 // TODO: update addr to use SSRC instead of address
 unsafe extern "C" {
