@@ -1,11 +1,8 @@
 use bytes::Bytes;
 use dashmap::DashMap;
-use quinn::rustls::pki_types::CertificateDer;
-use quinn::{ClientConfig, Connection, Endpoint, rustls};
-use std::io;
-use std::sync::Arc;
+use iroh::endpoint::Connection;
 use std::time::Instant;
-use std::{collections::VecDeque, net::SocketAddr};
+use std::{collections::VecDeque};
 
 use crate::interop::StreamType;
 use crate::packets::RTPSession;
@@ -15,12 +12,14 @@ use crate::session_management::delay_calculator::DelayCalculator;
 static WINDOW_SIZE: usize = 50;
 static MAX_DROPOUT: u16 = 3000;
 
+#[derive(Debug)]
 pub struct PlayoutBufferNode {
     pub rtp_timestamp: u32,
     pub playout_time: u32,
     pub coded_data: Vec<Fragment>,
 }
 
+#[derive(Debug)]
 pub struct Fragment {
     pub extended_sequence_num: u32,
     pub sequence_num: u16,
@@ -37,6 +36,7 @@ impl Fragment {
     }
 }
 
+#[derive(Debug)]
 pub struct Peer {
     ///  variance in arrival time
     jitter: u32,
@@ -217,6 +217,7 @@ impl Peer {
 unsafe impl Send for Peer {}
 unsafe impl Sync for Peer {}
 
+#[derive(Debug)]
 pub struct PeerManager {
     peers: DashMap<u32, Peer>,
 
@@ -227,9 +228,7 @@ pub struct PeerManager {
     pub rtp_session: RTPSession,
     pub delay_calculator: DelayCalculator,
 
-    peer_connections: DashMap<u32, Arc<Connection>>,
-    pub endpoint: Endpoint,
-    pub der_cert: CertificateDer<'static>,
+    peer_connections: DashMap<u32, Connection>,
 }
 
 impl PeerManager {
@@ -240,8 +239,6 @@ impl PeerManager {
     pub fn new(
         rtp_session: RTPSession,
         stream_type: StreamType,
-        endpoint: Endpoint,
-        der_cert: CertificateDer<'static>,
     ) -> Self {
         Self {
             peers: DashMap::new(),
@@ -251,10 +248,7 @@ impl PeerManager {
                 StreamType::Audio => 0,
                 StreamType::Video => 3000,
             }),
-
             peer_connections: DashMap::new(),
-            endpoint,
-            der_cert,
         }
     }
 
@@ -284,45 +278,7 @@ impl PeerManager {
         }
     }
 
-    pub async fn connect_to_peer(
-        &self,
-        addr: SocketAddr,
-        peer_cert: &[u8],
-    ) -> io::Result<Connection> {
-        let mut certs = rustls::RootCertStore::empty();
-        let _ = certs.add(CertificateDer::from_slice(&peer_cert));
-        let config = ClientConfig::with_root_certificates(Arc::new(certs)).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::ConnectionRefused,
-                format!("Certificate is invalid: {}", e),
-            )
-        })?;
-
-        let connecting = self
-            .endpoint
-            .connect_with(config, addr, "localhost")
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::ConnectionRefused,
-                    format!("Failed to connect: {}", e),
-                )
-            })?;
-
-        println!("attempting to connect!");
-
-        let connection = connecting.await.map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::ConnectionRefused,
-                format!("Failed to connect: {}", e),
-            )
-        })?;
-
-        println!("Connection created!");
-
-        Ok(connection)
-    }
-
-    pub fn add_connection(&self, ssrc: &u32, connection: Arc<Connection>) {
+    pub fn add_connection(&self, ssrc: &u32, connection: Connection) {
         if !self.peer_connections.contains_key(ssrc) {
             self.peer_connections.insert(*ssrc, connection);
         }
@@ -373,10 +329,10 @@ impl PeerManager {
         peer.add_node(playout_buffer_node, fragment);
     }
 
-    pub fn get_peers(&self) -> Vec<Arc<Connection>> {
+    pub fn get_peers(&self) -> Vec<(u32, Connection)> {
         self.peer_connections
             .iter()
-            .map(|entry| entry.value().clone())
+            .map(|entry| (*entry.key(), entry.value().clone()))
             .collect()
     }
 

@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 pub mod rtcp;
 pub mod rtp;
 
+#[derive(Debug)]
 pub struct RTPSession {
     current_sequence_num: AtomicU16,
     packets_generated: AtomicU32,

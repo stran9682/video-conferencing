@@ -3,9 +3,9 @@ use std::time::Instant;
 use std::{io, sync::Arc};
 
 use bytes::Bytes;
-use quinn::Connection;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Receiver};
 
+use crate::interop::network_runtime::remove_peer;
 use crate::packets::rtp::h264::{get_fragments, get_nal_units, rtp_to_avcc_h264};
 use crate::packets::rtp::rtp::RTPHeader;
 use crate::session_management::delay_calculator::calculate_playout_time;
@@ -76,11 +76,12 @@ pub async fn rtp_frame_sender(
 
             // send each packet to every peer
             for fragment in fragments {
-                for connection in peers.iter() {
+                for (ssrc, connection) in peers.iter() {
                     match connection.send_datagram_wait(fragment.clone()).await {
                         Ok(_) => {}
                         Err(e) => {
-                            eprintln!("Failed to send to {}: {}", connection.remote_address(), e)
+                            eprintln!("Failed to send to {}: {}", connection.remote_id(), e);
+                            remove_peer(&peer_manager, ssrc, crate::interop::StreamType::Video);
                         }
                     }
                 }
@@ -90,7 +91,7 @@ pub async fn rtp_frame_sender(
 }
 
 pub async fn rtp_frame_receiver(
-    connection: Arc<Connection>,
+    mut frame_rx: Receiver<(RTPHeader, Bytes)>,
     peer_manager: Arc<PeerManager>,
     media_clock_rate: u32,
 ) -> io::Result<()> {
@@ -99,27 +100,16 @@ pub async fn rtp_frame_receiver(
     let instant = Instant::now();
 
     loop {
-        let mut data = match connection.read_datagram().await {
-            Ok(data) => data,
-            Err(e) => {
-                let err = format!(
-                    "Video receiver of {} terminated {}",
-                    connection.remote_address(),
-                    e
-                );
+        let (header, data) = match  frame_rx.recv().await {
+            Some(data) => data,
+            None => {
+                eprintln!("Video receiver channel closed:");
 
-                eprintln!("{}", err);
-
-                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, err));
+                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "Video receiver channel closed"));
             }
         };
 
         let duration_since = instant.elapsed();
-
-        let header = RTPHeader::deserialize(&mut data);
-
-        let clone = Arc::clone(&connection);
-        peer_manager.add_connection(&header.ssrc, clone);
 
         let play_out_time = calculate_playout_time(
             &peer_manager,

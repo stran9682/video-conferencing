@@ -1,12 +1,10 @@
 use std::{io, sync::Arc, time::Instant};
 
 use bytes::{BufMut, Bytes, BytesMut};
-use quinn::Connection;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Receiver};
 
 use crate::{
-    packets::rtp::rtp::RTPHeader,
-    session_management::{delay_calculator::calculate_playout_time, peer_manager::PeerManager},
+    interop::network_runtime::remove_peer, packets::rtp::rtp::RTPHeader, session_management::{delay_calculator::calculate_playout_time, peer_manager::PeerManager}
 };
 
 unsafe extern "C" {
@@ -53,10 +51,13 @@ pub async fn rtp_audio_sender(
         //println!("packet size: {:?}", packet.len());
         let packet = buffer.split().freeze();
 
-        for connection in peers.iter() {
+        for (ssrc, connection) in peers.iter() {
             match connection.send_datagram_wait(packet.clone()).await {
                 Ok(_) => {}
-                Err(e) => eprintln!("Failed to send to {}: {}", connection.remote_address(), e),
+                Err(e) => {
+                    eprintln!("Failed to send to {}: {}", connection.remote_id(), e);
+                    remove_peer(&peer_manager, ssrc, crate::interop::StreamType::Audio);
+                }
             }
         }
 
@@ -67,7 +68,7 @@ pub async fn rtp_audio_sender(
 }
 
 pub async fn rtp_audio_receiver(
-    connection: Arc<Connection>,
+    mut audio_rx: Receiver<(RTPHeader, Bytes)>,
     peer_manager: Arc<PeerManager>,
     media_clock_rate: u32,
 ) -> io::Result<()> {
@@ -76,29 +77,18 @@ pub async fn rtp_audio_receiver(
     let instant = Instant::now();
 
     loop {
-        let mut data = match connection.read_datagram().await {
-            Ok(data) => data,
-            Err(e) => {
-                let err = format!(
-                    "Audio receiver of {} terminated {}",
-                    connection.remote_address(),
-                    e
-                );
+        let (header, data) = match  audio_rx.recv().await {
+            Some(data) => data,
+            None => {
+                eprintln!("Video receiver channel closed:");
 
-                eprintln!("{}", err);
-
-                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, err));
+                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "Video receiver channel closed"));
             }
         };
 
         //println!("Got a packet!");
 
         let duration_since = instant.elapsed();
-
-        let header = RTPHeader::deserialize(&mut data);
-
-        let clone = Arc::clone(&connection);
-        peer_manager.add_connection(&header.ssrc, clone);
 
         let play_out_time = calculate_playout_time(
             &peer_manager,

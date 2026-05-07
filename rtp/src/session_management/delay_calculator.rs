@@ -8,6 +8,7 @@ use crate::{
     session_management::peer_manager::{Fragment, PeerManager, PlayoutBufferNode},
 };
 
+#[derive(Debug)]
 pub struct PeerDelay {
     active_delay: u32,
     delay_estimate: u32,
@@ -49,6 +50,7 @@ impl PeerDelay {
     }
 }
 
+#[derive(Debug)]
 pub struct DelayCalculator {
     skew_threshold: i32,
     peer_delay: DashMap<u32, PeerDelay>,

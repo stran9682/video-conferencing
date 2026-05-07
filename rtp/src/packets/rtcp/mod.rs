@@ -14,7 +14,6 @@ use tokio::time::{Duration, sleep};
 use crate::interop::StreamType;
 use crate::packets::rtcp::rtcp_header::{PacketType, RTCPHeader};
 use crate::packets::rtcp::sender_report::SenderReport;
-use crate::session_management::signaling_server::remove_peer;
 use crate::{interop::runtime, session_management::peer_manager::PeerManager};
 
 unsafe extern "C" {
@@ -121,7 +120,7 @@ async fn rtcp_sender(
 
         let peers = peer_manager.get_peers();
         for addr in peers {
-            let rtcp_addr = addr.remote_address();
+            let rtcp_addr = addr.1.remote_id();
             let peer_ip = format!("{}:{}", rtcp_addr.ip(), rtcp_addr.port() + 1);
 
             match socket.send_to(&packet, peer_ip).await {
