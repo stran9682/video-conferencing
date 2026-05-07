@@ -43,7 +43,7 @@ pub async fn rtp_audio_sender(
 
         let header =
             peer_manager
-                .rtp_session
+                .audio_rtp_session
                 .get_packet(false, sample.timestamp, sample.data.len() as u32);
 
         //println!("Created a packet");

@@ -69,7 +69,7 @@ pub async fn rtp_frame_sender(
             // Split a NAL unit into multiple RTP packets
             let fragments = get_fragments(
                 nal_unit,
-                &peer_manager.rtp_session,
+                &peer_manager.video_rtp_session,
                 nal_units.peek().is_none(), // last packet of the frame gets marked
                 timestamp,
             );

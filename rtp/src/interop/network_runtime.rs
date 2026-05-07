@@ -7,11 +7,8 @@ use std::{
 use bytes::Bytes;
 use dashmap::DashSet;
 use iroh::{
-    Endpoint,
-    endpoint::presets,
-    protocol::{AcceptError, ProtocolHandler, Router},
+    Endpoint, PublicKey, endpoint::presets, protocol::{AcceptError, ProtocolHandler, Router}
 };
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
@@ -22,9 +19,9 @@ use crate::{
         runtime,
         video::{EncodedFrame, ReleaseCallback, rtp_frame_receiver, rtp_frame_sender},
     },
-    packets::rtp::rtp::RTPHeader,
+    packets::{rtcp::start_rtcp, rtp::rtp::RTPHeader},
     session_management::{
-        peer_manager::PeerManager,
+        peer_manager::{ConnectionData, PeerManager},
         signaling_server::{
             OpusArgs, swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer,
             swift_remove_video_peer,
@@ -120,12 +117,7 @@ async fn network_runtime() -> anyhow::Result<()> {
     let endpoint = Endpoint::bind(presets::N0).await?;
     endpoint.online().await;
 
-    let ssrc = {
-        let mut rng = rand::rng();
-        rng.next_u32()
-    };
-
-    let peer_manager = Arc::new(PeerManager::new(ssrc, StreamType::Audio));
+    let peer_manager = Arc::new(PeerManager::new());
     let rtp_session = RTP::new(peer_manager.clone());
 
     // Video sending task
@@ -192,7 +184,8 @@ impl ProtocolHandler for RTP {
 
         // Construct and send a response
         let response = ConnectionArgs {
-            ssrc: self.peer_manager.local_ssrc(),
+            video_ssrc: self.peer_manager.video_rtp_session.ssrc,
+            audio_ssrc: self.peer_manager.audio_rtp_session.ssrc,
             peers: self.peers.iter().map(|r| r.clone()).collect(),
             pps: h264_parameters.pps.clone(),
             sps: h264_parameters.sps.clone(),
@@ -215,11 +208,11 @@ impl ProtocolHandler for RTP {
                 audio_manager_context.context,
                 request.sample_rate,
                 request.channels,
-                request.ssrc,
+                request.audio_ssrc,
             )
         };
         self.peer_manager
-            .add_peer_data(request.ssrc, swift_peer_audio, 0, StreamType::Audio);
+            .add_peer_data(request.audio_ssrc, swift_peer_audio, 0, StreamType::Audio);
 
         let context = PEER_VIDEO_CONTEXT.wait();
         let swift_peer_video = unsafe {
@@ -229,18 +222,22 @@ impl ProtocolHandler for RTP {
                 request.pps.len(),
                 request.sps.as_ptr(),
                 request.sps.len(),
-                request.ssrc,
+                request.video_ssrc,
             )
         };
         self.peer_manager
-            .add_peer_data(request.ssrc, swift_peer_video, 3000, StreamType::Video);
+            .add_peer_data(request.video_ssrc, swift_peer_video, 3000, StreamType::Video);
+        
+        let connection_data = ConnectionData::new(connection.clone(), request.audio_ssrc, request.video_ssrc);
+
         self.peer_manager
-            .add_connection(&request.ssrc, connection.clone());
+            .add_connection(connection.remote_id(), connection_data);
 
         // TODO: Start a listening task to receive packets
         // These will route to the correct task
         let (audio_tx, audio_rx) = mpsc::channel::<(RTPHeader, Bytes)>(100);
         let (frame_tx, frame_rx) = mpsc::channel::<(RTPHeader, Bytes)>(100);
+        let (rtcp_tx, rtcp_rx) = mpsc::channel::<(Bytes, PublicKey)>(100);
 
         let audio = self.peer_manager.clone();
         runtime().spawn(async move {
@@ -256,6 +253,11 @@ impl ProtocolHandler for RTP {
             }
         });
 
+        let rtcp = self.peer_manager.clone();
+        runtime().spawn(async move {
+            start_rtcp(rtcp, rtcp_rx).await 
+        });
+
         let peer_manager = self.peer_manager.clone();
         runtime().spawn(async move {
             loop {
@@ -267,7 +269,7 @@ impl ProtocolHandler for RTP {
                             connection.remote_id(),
                             e
                         );
-                        remove_peer(&peer_manager, &request.ssrc);
+                        remove_peer(&peer_manager, connection.remote_id());
 
                         eprintln!("{}", err);
                         return;
@@ -275,7 +277,9 @@ impl ProtocolHandler for RTP {
                 };
 
                 if packet[1] > 2 {
-                    // TODO: Handle RTCP
+                    rtcp_tx.send((packet, connection.remote_id())).await;
+
+
                 } else {
                     let header = RTPHeader::deserialize(&mut packet);
 
@@ -295,7 +299,8 @@ impl ProtocolHandler for RTP {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
 struct ConnectionArgs {
-    ssrc: u32,
+    video_ssrc: u32,
+    audio_ssrc: u32,
     peers: Vec<String>,
 
     // Video
@@ -377,20 +382,22 @@ pub extern "C" fn rust_send_frame(
     }
 }
 
-pub fn remove_peer(peer_manager: &Arc<PeerManager>, ssrc: &u32) {
-    let (peer_audio, peer_video) = peer_manager.remove_peer(&ssrc);
+pub fn remove_peer(peer_manager: &Arc<PeerManager>, public_key: PublicKey) {
+    let Some((peer_audio, peer_video)) = peer_manager.remove_peer(&public_key) else {
+        return;
+    };
 
     unsafe {
         swift_remove_audio_peer(
             AUDIO_MANAGER_CONTEXT.get().unwrap().context,
-            *ssrc,
-            peer_audio.swift_peer_model,
+            peer_audio.0,
+            peer_audio.1.swift_peer_model,
         );
 
         swift_remove_video_peer(
-            *ssrc,
+            peer_video.0,
             PEER_VIDEO_CONTEXT.get().unwrap().context,
-            peer_video.swift_peer_model,
+            peer_video.1.swift_peer_model,
         );
     }
 }

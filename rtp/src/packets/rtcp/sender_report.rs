@@ -64,7 +64,7 @@ impl SenderReport {
         buf
     }
 
-    pub fn deserialize(packet: &mut BytesMut, report_counts: u8) -> Self {
+    pub fn deserialize<B: Buf>(packet: &mut B, report_counts: u8) -> Self {
         let ssrc = packet.get_u32();
         let ntp_time = packet.get_u64();
         let rtp_time = packet.get_u32();

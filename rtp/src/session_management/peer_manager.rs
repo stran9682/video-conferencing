@@ -1,6 +1,8 @@
 use bytes::Bytes;
 use dashmap::DashMap;
+use iroh::PublicKey;
 use iroh::endpoint::Connection;
+use rand::Rng;
 use std::collections::VecDeque;
 use std::time::Instant;
 
@@ -221,27 +223,50 @@ unsafe impl Send for Peer {}
 unsafe impl Sync for Peer {}
 
 #[derive(Debug)]
+pub struct ConnectionData {
+    connection: Connection,
+    audio_ssrc: u32,
+    video_ssrc: u32
+}
+
+impl ConnectionData {
+    pub fn new (connection: Connection, audio_ssrc: u32, video_ssrc: u32) -> Self {
+        ConnectionData { connection, audio_ssrc, video_ssrc }
+    }
+} 
+
+#[derive(Debug)]
 pub struct PeerManager {
     peer_video: DashMap<u32, Peer>,
     peer_audio: DashMap<u32, Peer>,
-    peer_connections: DashMap<u32, Connection>,
+    peer_connections: DashMap<PublicKey, ConnectionData>,
 
-    pub rtp_session: RTPSession,
+    pub video_rtp_session: RTPSession,
+    pub audio_rtp_session: RTPSession
 }
 
 impl PeerManager {
-    pub fn local_ssrc(&self) -> u32 {
-        self.rtp_session.ssrc
-    }
+    pub fn new() -> Self {
+        let video_ssrc = {
+            let mut rng = rand::rng();
+            rng.next_u32()
+        };
 
-    pub fn new(ssrc: u32, stream_type: StreamType) -> Self {
-        let rtp_session = RTPSession::new(ssrc, stream_type);
+        let video_rtp_session = RTPSession::new(video_ssrc, StreamType::Video);
+
+        let audio_ssrc = {
+            let mut rng = rand::rng();
+            rng.next_u32()
+        };
+
+        let audio_rtp_session = RTPSession::new(audio_ssrc, StreamType::Audio);
 
         Self {
             peer_video: DashMap::new(),
             peer_audio: DashMap::new(),
             peer_connections: DashMap::new(),
-            rtp_session,
+            video_rtp_session,
+            audio_rtp_session
         }
     }
 
@@ -272,22 +297,23 @@ impl PeerManager {
         }
     }
 
-    pub fn add_connection(&self, ssrc: &u32, connection: Connection) {
-        if !self.peer_connections.contains_key(ssrc) {
-            self.peer_connections.insert(*ssrc, connection);
+    pub fn add_connection(&self, public_key: PublicKey, connection_data: ConnectionData) {
+        if !self.peer_connections.contains_key(&public_key) {
+            self.peer_connections.insert(public_key, connection_data);
         }
     }
 
-    pub fn remove_peer(&self, ssrc: &u32) -> (Peer, Peer) {
-        let (_, peer_audio) = self.peer_audio.remove(&ssrc).unwrap();
-        let (_, peer_video) = self.peer_video.remove(&ssrc).unwrap();
+    pub fn remove_peer(&self, public_key: &PublicKey) -> Option<((u32, Peer), (u32, Peer))> {
+        let Some((_, connection_data)) = self.peer_connections.remove(public_key) else {
+            return None;
+        };
 
-        // TODO: remove and close a connection!
-        if let Some(_connection) = self.peer_connections.remove(ssrc) {
-            // connection.1.close(, reason);
-        }
+        connection_data.connection.close(0u32.into(), b"done");
 
-        (peer_audio, peer_video)
+        let audio = self.peer_audio.remove(&connection_data.audio_ssrc).unwrap();
+        let video = self.peer_video.remove(&connection_data.video_ssrc).unwrap();
+
+        Some((audio, video))
     }
 
     pub fn is_peer_timed_out(&self, ssrc: &u32, stream_type: StreamType) -> bool {
@@ -336,14 +362,7 @@ impl PeerManager {
     pub fn get_peers(&self) -> Vec<Connection> {
         self.peer_connections
             .iter()
-            .map(|entry| entry.value().clone())
-            .collect()
-    }
-
-    pub fn get_ssrc(&self) -> Vec<u32> {
-        self.peer_connections
-            .iter()
-            .map(|peer| peer.key().clone())
+            .map(|entry| entry.value().connection.clone())
             .collect()
     }
 
@@ -368,6 +387,24 @@ impl PeerManager {
 
         Some(node)
     }
+
+    pub fn determine_stream_type(
+        &self, 
+        public_key: &PublicKey, 
+        ssrc: &u32
+    ) -> Option<StreamType> {
+
+        let res = self.peer_connections.get(public_key)?;
+
+        if res.value().audio_ssrc == *ssrc {
+           return Some(StreamType::Audio)
+        }
+        else if res.value().video_ssrc == *ssrc {
+            return Some(StreamType::Video)
+        }
+
+        None
+    } 
 
     pub fn update_last_sr_timestamp(
         &self,

@@ -5,10 +5,11 @@ pub mod sender_report;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
+use iroh::PublicKey;
 use rand::RngExt;
 use tokio::io;
-use tokio::net::UdpSocket;
+use tokio::sync::mpsc::Receiver;
 use tokio::time::{Duration, sleep};
 
 use crate::interop::StreamType;
@@ -21,33 +22,33 @@ unsafe extern "C" {
 }
 
 pub async fn start_rtcp(
-    socket: UdpSocket,
     peer_manager: Arc<PeerManager>,
-    stream_type: StreamType,
+    rtcp_rx: Receiver<(Bytes, PublicKey)>,
 ) {
-    let socket = Arc::new(socket);
-
-    let socket_clone = Arc::clone(&socket);
     let peer_manager_clone = Arc::clone(&peer_manager);
     runtime().spawn(async move {
-        rtcp_sender(socket_clone, peer_manager_clone, stream_type).await;
+        rtcp_sender(peer_manager_clone, StreamType::Video).await;
     });
 
-    if let Err(e) = rtcp_receiver(socket, peer_manager).await {
+    let peer_manager_clone = Arc::clone(&peer_manager);
+    runtime().spawn(async move {
+        rtcp_sender(peer_manager_clone, StreamType::Audio).await;
+    });
+
+    if let Err(e) = rtcp_receiver(peer_manager, rtcp_rx).await {
         eprintln!("Something wrong with RTCP socket. Check: {}", e)
     };
 }
 
 async fn rtcp_sender(
-    socket: Arc<UdpSocket>,
     peer_manager: Arc<PeerManager>,
     stream_type: StreamType,
 ) {
     let mut first_packet = true;
 
-    let clock_rate: f64 = match stream_type {
-        StreamType::Audio => 0.,
-        StreamType::Video => 90000.,
+    let (clock_rate, rtp_session) = match stream_type {
+        StreamType::Audio => (48_000. , &peer_manager.audio_rtp_session),
+        StreamType::Video => (90_000. , &peer_manager.video_rtp_session)
     };
 
     loop {
@@ -91,12 +92,12 @@ async fn rtcp_sender(
         let ntp = seconds << 32 | (fraction as u64);
 
         let sender_report = SenderReport {
-            ssrc: peer_manager.local_ssrc(),
+            ssrc: peer_manager.audio_rtp_session.ssrc,
             ntp_time: ntp,
             rtp_time: unsafe { (swift_send_cmclocktime() * clock_rate) as u32 },
-            packet_count: peer_manager.rtp_session.get_num_packets_generated(),
-            octet_count: peer_manager.rtp_session.get_num_octets_sent(),
-            reports: peer_manager.get_reception_reports(),
+            packet_count: rtp_session.get_num_packets_generated(),
+            octet_count: rtp_session.get_num_octets_sent(),
+            reports: peer_manager.get_reception_reports(stream_type),
         };
 
         let header = RTCPHeader {
@@ -112,26 +113,22 @@ async fn rtcp_sender(
         packet.put(header.serialize());
         packet.put(sender_report.serialize());
 
-        for ssrc in peer_manager.get_ssrc() {
-            if peer_manager.is_peer_timed_out(&ssrc) {
-                remove_peer(&peer_manager, &ssrc, stream_type);
-            }
-        }
-
         let peers = peer_manager.get_peers();
-        for addr in peers {
-            let rtcp_addr = addr.1.remote_id();
-            let peer_ip = format!("{}:{}", rtcp_addr.ip(), rtcp_addr.port() + 1);
+        let packet = packet.freeze();
 
-            match socket.send_to(&packet, peer_ip).await {
+        for addr in peers {
+            match addr.send_datagram_wait(packet.clone()).await {
                 Ok(_) => {}
-                Err(e) => eprintln!("Failed to send RTCP to {}: {}", rtcp_addr, e),
+                Err(e) => eprintln!("Failed to send RTCP to {}: {}", addr.remote_id(), e),
             }
         }
     }
 }
 
-async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -> io::Result<()> {
+async fn rtcp_receiver(
+    peer_manager: Arc<PeerManager>, 
+    mut rx: Receiver<(Bytes, PublicKey)>, 
+) -> io::Result<()> {
     /*
        TODO:
        while packet
@@ -144,31 +141,35 @@ async fn rtcp_receiver(socket: Arc<UdpSocket>, peer_manager: Arc<PeerManager>) -
        calculate next RTCP time to send
 
     */
-    let mut buffer = BytesMut::with_capacity(1500);
 
     loop {
-        let (bytes_read, _) = socket
-            .recv_from(unsafe { buffer.spare_capacity_mut().assume_init_mut() })
-            .await?;
+        let (mut data, public_key) = match rx.recv().await {
+            Some(data) => data,
+            None => {
+                eprintln!("Video receiver channel closed:");
 
-        unsafe {
-            buffer.set_len(bytes_read);
-        }
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionAborted,
+                    "Video receiver channel closed",
+                ));
+            }
+        };
 
-        let mut packet = buffer.split();
+        while data.len() > 0 {
+            let header = RTCPHeader::deserialize(&mut data);
 
-        buffer.reserve(1500);
-
-        while packet.len() > 0 {
-            let rtcp_header = RTCPHeader::deserialize(&mut packet);
-
-            match rtcp_header.packet_type {
+            match header.packet_type {
                 PacketType::SenderReport => {
-                    let sender_report = SenderReport::deserialize(&mut packet, rtcp_header.count);
+                    let sender_report = SenderReport::deserialize(&mut data, header.count);
 
+                    // DETERMINE WHO THIS IS!
+                    let stream_type = peer_manager
+                        .determine_stream_type(&public_key, &sender_report.ssrc)
+                        .ok_or(io::ErrorKind::ConnectionRefused)?;
+                    
                     let last_sr_timestamp = (sender_report.ntp_time >> 16 & 0xFFFFFFFF) as u32;
 
-                    peer_manager.update_last_sr_timestamp(sender_report.ssrc, last_sr_timestamp);
+                    peer_manager.update_last_sr_timestamp(sender_report.ssrc, last_sr_timestamp, stream_type);
 
                     for report in sender_report.reports {
                         println!(

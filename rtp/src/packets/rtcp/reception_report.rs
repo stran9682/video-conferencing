@@ -52,7 +52,7 @@ impl ReceptionReport {
         buf
     }
 
-    pub fn deserialize(packet: &mut BytesMut) -> Self {
+    pub fn deserialize<B: Buf>(packet: &mut B) -> Self {
         let reportee_ssrc = packet.get_u32();
         let fraction_lost = packet.get_u8();
 

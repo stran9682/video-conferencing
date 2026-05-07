@@ -47,7 +47,7 @@ impl RTCPHeader {
         buf
     }
 
-    pub fn deserialize(packet: &mut BytesMut) -> RTCPHeader {
+    pub fn deserialize<B: Buf>(packet: &mut B) -> RTCPHeader {
         let b0 = packet.get_u8();
         //let version = (b0 >> VERSION_SHIFT) & VERSION_MASK;
 
