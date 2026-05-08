@@ -1,7 +1,4 @@
-use serde::{Deserialize, Serialize};
 use std::ffi::c_void;
-
-use crate::interop::StreamType;
 
 // TODO: update addr to use SSRC instead of address
 unsafe extern "C" {
@@ -32,25 +29,6 @@ unsafe extern "C" {
         video_manager_context: *mut c_void,
         peer_context: *mut c_void,
     );
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(tag = "type")]
-enum StreamTypeWithArgs {
-    Video { pps: Vec<u8>, sps: Vec<u8> },
-    Audio { sample_rate: f64, channels: u32 },
-}
-
-impl StreamTypeWithArgs {
-    pub fn to_stream_type(&self) -> StreamType {
-        match self {
-            StreamTypeWithArgs::Audio {
-                sample_rate: _,
-                channels: _,
-            } => StreamType::Audio,
-            StreamTypeWithArgs::Video { pps: _, sps: _ } => StreamType::Video,
-        }
-    }
 }
 
 pub struct OpusArgs {

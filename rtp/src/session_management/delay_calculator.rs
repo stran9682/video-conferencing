@@ -66,7 +66,7 @@ impl DelayCalculator {
     }
 
     pub fn remove_peer(&self, ssrc: &u32) {
-        self.peer_delay.remove(&ssrc);
+        self.peer_delay.remove(ssrc);
     }
 
     pub fn add_peer(&self, ssrc: u32) {
@@ -75,12 +75,10 @@ impl DelayCalculator {
     }
 
     pub fn adjust_skew(&self, ssrc: u32, difference: u32) -> i32 {
-        let adjustment = self
+        self
             .peer_delay
             .get_mut(&ssrc)
-            .map_or(0, |mut peer| peer.adjust_skew(difference));
-
-        adjustment
+            .map_or(0, |mut peer| peer.adjust_skew(difference))
     }
 }
 

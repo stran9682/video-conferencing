@@ -37,7 +37,7 @@ impl RTPSession {
             marker: is_last_unit,
             payload_type: self.stream_type as u8,
             sequence_number: self.current_sequence_num.load(Ordering::Relaxed),
-            timestamp: timestamp,
+            timestamp,
             ssrc: self.ssrc,
             // csrc:
         }

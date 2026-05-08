@@ -45,7 +45,7 @@ impl RTPHeader {
         //let mut buf = BytesMut::with_capacity(1500);
 
         // first byte
-        let mut b0 = (self.version << 6) | 0 as u8; // this should be set to the CSRC length, but i've removed it for now
+        let mut b0 = (self.version << 6) | 0_u8; // this should be set to the CSRC length, but i've removed it for now
         if self.padding {
             b0 |= 1 << 5;
         }

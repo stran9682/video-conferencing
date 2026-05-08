@@ -48,7 +48,7 @@ async fn upload(file_path: String, endpoint_id: String) -> io::Result<()> {
         ));
     };
 
-    let remote: PublicKey = PublicKey::from_str(&endpoint_id.trim()).map_err(|e| {
+    let remote: PublicKey = PublicKey::from_str(endpoint_id.trim()).map_err(|e| {
         io::Error::new(
             io::ErrorKind::AddrNotAvailable,
             format!("Could not convert input to hash: {}", e),

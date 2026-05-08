@@ -41,10 +41,11 @@ pub async fn rtp_audio_sender(
             continue;
         }
 
-        let header =
-            peer_manager
-                .audio_rtp_session
-                .get_packet(false, sample.timestamp, sample.data.len() as u32);
+        let header = peer_manager.audio_rtp_session.get_packet(
+            false,
+            sample.timestamp,
+            sample.data.len() as u32,
+        );
 
         //println!("Created a packet");
         header.serialize(&mut buffer);
@@ -119,7 +120,7 @@ pub async fn rtp_audio_receiver(
         }
 
         unsafe {
-            swift_receive_sample(context, audio_data.as_ptr() as *const u8, audio_data.len());
+            swift_receive_sample(context, audio_data.as_ptr(), audio_data.len());
         }
     }
 }

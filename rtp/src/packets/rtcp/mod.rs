@@ -21,10 +21,7 @@ unsafe extern "C" {
     fn swift_send_cmclocktime() -> f64;
 }
 
-pub async fn start_rtcp(
-    peer_manager: Arc<PeerManager>,
-    rtcp_rx: Receiver<(Bytes, PublicKey)>,
-) {
+pub async fn start_rtcp(peer_manager: Arc<PeerManager>, rtcp_rx: Receiver<(Bytes, PublicKey)>) {
     let peer_manager_clone = Arc::clone(&peer_manager);
     runtime().spawn(async move {
         rtcp_sender(peer_manager_clone, StreamType::Video).await;
@@ -40,15 +37,12 @@ pub async fn start_rtcp(
     };
 }
 
-async fn rtcp_sender(
-    peer_manager: Arc<PeerManager>,
-    stream_type: StreamType,
-) {
+async fn rtcp_sender(peer_manager: Arc<PeerManager>, stream_type: StreamType) {
     let mut first_packet = true;
 
     let (clock_rate, rtp_session) = match stream_type {
-        StreamType::Audio => (48_000. , &peer_manager.audio_rtp_session),
-        StreamType::Video => (90_000. , &peer_manager.video_rtp_session)
+        StreamType::Audio => (48_000., &peer_manager.audio_rtp_session),
+        StreamType::Video => (90_000., &peer_manager.video_rtp_session),
     };
 
     loop {
@@ -126,8 +120,8 @@ async fn rtcp_sender(
 }
 
 async fn rtcp_receiver(
-    peer_manager: Arc<PeerManager>, 
-    mut rx: Receiver<(Bytes, PublicKey)>, 
+    peer_manager: Arc<PeerManager>,
+    mut rx: Receiver<(Bytes, PublicKey)>,
 ) -> io::Result<()> {
     /*
        TODO:
@@ -155,30 +149,31 @@ async fn rtcp_receiver(
             }
         };
 
-        while data.len() > 0 {
+        while !data.is_empty() {
             let header = RTCPHeader::deserialize(&mut data);
 
-            match header.packet_type {
-                PacketType::SenderReport => {
-                    let sender_report = SenderReport::deserialize(&mut data, header.count);
+            if header.packet_type == PacketType::SenderReport {
+                let sender_report = SenderReport::deserialize(&mut data, header.count);
 
-                    // DETERMINE WHO THIS IS!
-                    let stream_type = peer_manager
-                        .determine_stream_type(&public_key, &sender_report.ssrc)
-                        .ok_or(io::ErrorKind::ConnectionRefused)?;
-                    
-                    let last_sr_timestamp = (sender_report.ntp_time >> 16 & 0xFFFFFFFF) as u32;
+                // DETERMINE WHO THIS IS!
+                let stream_type = peer_manager
+                    .determine_stream_type(&public_key, &sender_report.ssrc)
+                    .ok_or(io::ErrorKind::ConnectionRefused)?;
 
-                    peer_manager.update_last_sr_timestamp(sender_report.ssrc, last_sr_timestamp, stream_type);
+                let last_sr_timestamp = (sender_report.ntp_time >> 16 & 0xFFFFFFFF) as u32;
 
-                    for report in sender_report.reports {
-                        println!(
-                            "{}: Jitter {}, {}",
-                            report.reportee_ssrc, report.jitter, report.extended_sequence_number
-                        )
-                    }
+                peer_manager.update_last_sr_timestamp(
+                    sender_report.ssrc,
+                    last_sr_timestamp,
+                    stream_type,
+                );
+
+                for report in sender_report.reports {
+                    println!(
+                        "{}: Jitter {}, {}",
+                        report.reportee_ssrc, report.jitter, report.extended_sequence_number
+                    )
                 }
-                _ => {}
             }
         }
     }

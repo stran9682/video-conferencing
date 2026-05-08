@@ -108,7 +108,7 @@ impl Peer {
             return false;
         };
 
-        return last_sr_time.elapsed().as_secs() > 10;
+        last_sr_time.elapsed().as_secs() > 10
     }
 
     /// Determines the min arrival time along in a window,
@@ -118,7 +118,7 @@ impl Peer {
 
         self.window.push_front(difference);
         let d = difference.wrapping_sub(self.window[0]) as i32;
-        self.jitter = self.jitter + (d.abs() as u32 - self.jitter) / 16;
+        self.jitter = self.jitter + (d.unsigned_abs() - self.jitter) / 16;
 
         if self.window.len() > WINDOW_SIZE {
             self.window.pop_back();
@@ -134,7 +134,7 @@ impl Peer {
 
         self.min_window = min;
 
-        return self.min_window;
+        self.min_window
     }
 
     pub fn add_node(&mut self, mut playout_buffer_node: PlayoutBufferNode, mut fragment: Fragment) {
@@ -226,14 +226,18 @@ unsafe impl Sync for Peer {}
 pub struct ConnectionData {
     connection: Connection,
     audio_ssrc: u32,
-    video_ssrc: u32
+    video_ssrc: u32,
 }
 
 impl ConnectionData {
-    pub fn new (connection: Connection, audio_ssrc: u32, video_ssrc: u32) -> Self {
-        ConnectionData { connection, audio_ssrc, video_ssrc }
+    pub fn new(connection: Connection, audio_ssrc: u32, video_ssrc: u32) -> Self {
+        ConnectionData {
+            connection,
+            audio_ssrc,
+            video_ssrc,
+        }
     }
-} 
+}
 
 #[derive(Debug)]
 pub struct PeerManager {
@@ -242,7 +246,7 @@ pub struct PeerManager {
     peer_connections: DashMap<PublicKey, ConnectionData>,
 
     pub video_rtp_session: RTPSession,
-    pub audio_rtp_session: RTPSession
+    pub audio_rtp_session: RTPSession,
 }
 
 impl PeerManager {
@@ -266,7 +270,7 @@ impl PeerManager {
             peer_audio: DashMap::new(),
             peer_connections: DashMap::new(),
             video_rtp_session,
-            audio_rtp_session
+            audio_rtp_session,
         }
     }
 
@@ -304,9 +308,7 @@ impl PeerManager {
     }
 
     pub fn remove_peer(&self, public_key: &PublicKey) -> Option<((u32, Peer), (u32, Peer))> {
-        let Some((_, connection_data)) = self.peer_connections.remove(public_key) else {
-            return None;
-        };
+        let (_, connection_data) = self.peer_connections.remove(public_key)?;
 
         connection_data.connection.close(0u32.into(), b"done");
 
@@ -319,7 +321,7 @@ impl PeerManager {
     pub fn is_peer_timed_out(&self, ssrc: &u32, stream_type: StreamType) -> bool {
         let peers = self.get_peer_data(stream_type);
 
-        match peers.get(&ssrc) {
+        match peers.get(ssrc) {
             Some(peer) => peer.is_timed_out(),
             None => false,
         }
@@ -333,11 +335,7 @@ impl PeerManager {
     ) -> Option<u32> {
         let peers = self.get_peer_data(stream_type);
 
-        if let Some(mut found_peer) = peers.get_mut(&ssrc) {
-            Some(found_peer.set_and_get_min_window(difference))
-        } else {
-            None
-        }
+        peers.get_mut(&ssrc).map(|mut found_peer| found_peer.set_and_get_min_window(difference))
     }
 
     pub fn add_playout_node_to_peer(
@@ -350,10 +348,7 @@ impl PeerManager {
     ) -> Option<i32> {
         let peers = self.get_peer_data(stream_type);
 
-        let Some(mut peer) = peers.get_mut(&ssrc) else {
-            return None;
-        };
-
+        let mut peer = peers.get_mut(&ssrc)?;
         peer.add_node(playout_buffer_node, fragment);
 
         Some(peer.skew_calculator.adjust_skew(difference))
@@ -375,36 +370,27 @@ impl PeerManager {
         let peers = self.get_peer_data(stream_type);
         let mut peer = peers.get_mut(&ssrc)?;
 
-        let Some(index) = peer
+        let index = peer
             .playout_buffer
             .iter()
-            .position(|x| x.rtp_timestamp == timestamp)
-        else {
-            return None;
-        };
+            .position(|x| x.rtp_timestamp == timestamp)?;
 
         let node = peer.playout_buffer.remove(index);
 
         Some(node)
     }
 
-    pub fn determine_stream_type(
-        &self, 
-        public_key: &PublicKey, 
-        ssrc: &u32
-    ) -> Option<StreamType> {
-
+    pub fn determine_stream_type(&self, public_key: &PublicKey, ssrc: &u32) -> Option<StreamType> {
         let res = self.peer_connections.get(public_key)?;
 
         if res.value().audio_ssrc == *ssrc {
-           return Some(StreamType::Audio)
-        }
-        else if res.value().video_ssrc == *ssrc {
-            return Some(StreamType::Video)
+            return Some(StreamType::Audio);
+        } else if res.value().video_ssrc == *ssrc {
+            return Some(StreamType::Video);
         }
 
         None
-    } 
+    }
 
     pub fn update_last_sr_timestamp(
         &self,
@@ -447,11 +433,9 @@ impl PeerManager {
     }
 
     fn get_peer_data(&self, stream_type: StreamType) -> &DashMap<u32, Peer> {
-        let peers = match stream_type {
+        match stream_type {
             StreamType::Audio => &self.peer_audio,
             StreamType::Video => &self.peer_video,
-        };
-
-        &peers
+        }
     }
 }

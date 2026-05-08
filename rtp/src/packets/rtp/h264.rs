@@ -184,7 +184,7 @@ pub fn rtp_to_avcc_h264(packets: Vec<Bytes>) -> BytesMut {
                +---------------+---------------+
             */
             28 => {
-                fua_buffer.put(packet.slice(2 as usize..)); // just payload, skip the header.
+                fua_buffer.put(packet.slice(2_usize..)); // just payload, skip the header.
 
                 let b1 = packet[1];
                 if b1 & 0x40 != 0 {
@@ -208,5 +208,5 @@ pub fn rtp_to_avcc_h264(packets: Vec<Bytes>) -> BytesMut {
         }
     }
 
-    return payload;
+    payload
 }
