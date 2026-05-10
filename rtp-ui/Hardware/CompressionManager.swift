@@ -145,7 +145,7 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
                 compression.pps = ppsArray
                 compression.sps = spsArray
                 
-                rust_send_h264_config(pparameterSetPointer, UInt(pparamSetSize), sparameterSetPointer, UInt(sparamSetSize))
+                rust_set_h264_args(pparameterSetPointer, UInt(pparamSetSize), sparameterSetPointer, UInt(sparamSetSize))
             }
         }
     }

@@ -11,6 +11,7 @@ import RTPmacos
 struct JoinView: View {
     
     @Binding var state: Bool
+    @Binding var endpoint: String?
     @State private var address = ""
     
     var body: some View {
@@ -28,10 +29,8 @@ struct JoinView: View {
                 .frame(maxWidth: 200)
 
             Button(action: {
+                endpoint = address
                 state = false
-                address.withCString { pointer in
-                    rust_set_signalling_addr(pointer, UInt(strlen(pointer)))
-                }
             }, label: {
                 Text("Submit")
             })
@@ -39,9 +38,4 @@ struct JoinView: View {
         }
         .frame(minWidth: 500, minHeight: 300)
     }
-}
-
-#Preview {
-    @Previewable @State var state: Bool = true
-    JoinView(state: $state)
 }

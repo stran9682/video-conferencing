@@ -24,8 +24,6 @@ class AudioManager {
     
     init() {
         do {
-            run_runtime_server(StreamType(0))
-            
             audioEngine = AVAudioEngine()
             inputNode = audioEngine.inputNode
             
@@ -48,7 +46,7 @@ class AudioManager {
             self?.processBuffer(buffer, when: when.hostTime)
         }
         
-        rust_send_opus_config(OPUS_ENCODER_SAMPLE_RATE, AUDIO_OUTPUT_CHANNELS)
+        rust_set_opus_args(OPUS_ENCODER_SAMPLE_RATE, AUDIO_OUTPUT_CHANNELS)
     }
     
     private func processBuffer(_ buffer: AVAudioPCMBuffer, when: UInt64) {

@@ -3,12 +3,22 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef enum StreamType {
-  Audio,
-  Video,
-} StreamType;
-
 typedef void (*ReleaseCallback)(void*);
+
+extern void swift_receive_sample(void *context, const uint8_t *audioData, uintptr_t length);
+
+void rust_set_video_callback(void *context);
+
+void rust_set_audio_manger_context(void *context);
+
+void rust_set_h264_args(const uint8_t *pps,
+                        uintptr_t pps_length,
+                        const uint8_t *sps,
+                        uintptr_t sps_length);
+
+void rust_set_opus_args(double sample_rate, uint32_t channels);
+
+void rust_run_network_runtime(const uint8_t *endpoint_str, uintptr_t endpoint_str_length);
 
 bool rust_send_audio_sample(const uint8_t *data, uintptr_t len, uint32_t timestamp);
 
@@ -18,9 +28,7 @@ bool rust_send_frame(const uint8_t *data,
                      ReleaseCallback release_callback,
                      uint32_t timestamp);
 
-void run_runtime_server(enum StreamType stream);
-
-extern void swift_receive_sample(void *context, const uint8_t *audioData, uintptr_t length);
+extern void swift_receive_frame(void *context, void *frameData, uintptr_t frameDataLength);
 
 extern void swift_receive_video(void *context, const uint8_t *path);
 
@@ -36,8 +44,6 @@ void swift_upload(const uint8_t *file_path,
                   uintptr_t file_path_len,
                   const uint8_t *endpoint_id,
                   uintptr_t endpoint_id_length);
-
-extern void swift_receive_frame(void *context, void *frameData, uintptr_t frameDataLength);
 
 extern double swift_send_cmclocktime(void);
 
@@ -58,16 +64,3 @@ extern void swift_remove_audio_peer(void *audio_manager_context,
                                     void *participant_context);
 
 extern void swift_remove_video_peer(uint32_t ssrc, void *video_manager_context, void *peer_context);
-
-void rust_set_signalling_addr(const uint8_t *host_addr, uintptr_t host_addr_length);
-
-void rust_send_video_callback(void *context);
-
-void rust_send_audio_manger_context(void *context);
-
-void rust_send_opus_config(double sample_rate, uint32_t channels);
-
-void rust_send_h264_config(const uint8_t *pps,
-                           uintptr_t pps_length,
-                           const uint8_t *sps,
-                           uintptr_t sps_length);

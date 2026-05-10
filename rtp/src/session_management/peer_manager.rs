@@ -335,7 +335,9 @@ impl PeerManager {
     ) -> Option<u32> {
         let peers = self.get_peer_data(stream_type);
 
-        peers.get_mut(&ssrc).map(|mut found_peer| found_peer.set_and_get_min_window(difference))
+        peers
+            .get_mut(&ssrc)
+            .map(|mut found_peer| found_peer.set_and_get_min_window(difference))
     }
 
     pub fn add_playout_node_to_peer(

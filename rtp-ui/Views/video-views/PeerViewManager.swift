@@ -35,7 +35,7 @@ class PeerVideoManager {
     
     func registerToRust() {
         let refcon = Unmanaged.passRetained(self).toOpaque()
-        rust_send_video_callback(refcon)
+        rust_set_video_callback(refcon)
     }
 }
 

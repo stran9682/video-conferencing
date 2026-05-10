@@ -132,6 +132,8 @@ pub async fn rtp_frame_receiver(
                 continue;
             };
 
+            println!("Frame: {}", frame.rtp_timestamp);
+
             let frame_bytes: Vec<Bytes> = frame
                 .coded_data
                 .into_iter()
@@ -142,10 +144,13 @@ pub async fn rtp_frame_receiver(
             let frame_data_length = frame_data.len();
 
             let Some(context) = peer_manager.get_context(header.ssrc, StreamType::Video) else {
+                eprintln!("Video context was not setup for peer: {}", header.ssrc);
                 continue; // in case that the UI hasn't sent back the pointer to stream, just ignore
             };
 
             unsafe {
+                println!("Sending to swift");
+
                 swift_receive_frame(
                     context,
                     frame_data.as_mut_ptr() as *mut std::ffi::c_void,

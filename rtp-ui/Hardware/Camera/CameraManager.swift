@@ -47,8 +47,6 @@ class CameraManager: NSObject {
         super.init()
         
         compressionSession = CompressionManager()
-        
-        run_runtime_server(StreamType(1))
         //run_runtime_server(StreamType(0))
         
         Task {

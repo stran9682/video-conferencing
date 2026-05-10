@@ -11,13 +11,14 @@ import SwiftUI
 struct rtp_uiApp: App {
     
     @State var showingMainMenu: Bool = true
+    @State var endpoint: String?
     
     var body: some Scene {
         WindowGroup {
             if showingMainMenu {
                 NavigationSplitView(sidebar: {
                     List {
-                        NavigationLink("Join", destination: JoinView(state: $showingMainMenu))
+                        NavigationLink("Join", destination: JoinView(state: $showingMainMenu, endpoint: $endpoint))
                         NavigationLink("Recordings", destination: FileBrowser())
                         NavigationLink("Remotes", destination: VideoSelectionView())
                     }
@@ -26,7 +27,7 @@ struct rtp_uiApp: App {
                 })
             }
             else {
-                ContentView()
+                ContentView(endpoint: endpoint)
                     .frame(minWidth: 650, minHeight: 500)
             }
         }

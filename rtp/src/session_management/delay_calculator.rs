@@ -1,7 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use dashmap::DashMap;
 
 use crate::{
     interop::StreamType,
@@ -48,37 +47,6 @@ impl PeerDelay {
         }
 
         0
-    }
-}
-
-#[derive(Debug)]
-pub struct DelayCalculator {
-    skew_threshold: i32,
-    peer_delay: DashMap<u32, PeerDelay>,
-}
-
-impl DelayCalculator {
-    pub fn new(skew_threshold: i32) -> Self {
-        DelayCalculator {
-            peer_delay: DashMap::new(),
-            skew_threshold,
-        }
-    }
-
-    pub fn remove_peer(&self, ssrc: &u32) {
-        self.peer_delay.remove(ssrc);
-    }
-
-    pub fn add_peer(&self, ssrc: u32) {
-        self.peer_delay
-            .insert(ssrc, PeerDelay::new(self.skew_threshold));
-    }
-
-    pub fn adjust_skew(&self, ssrc: u32, difference: u32) -> i32 {
-        self
-            .peer_delay
-            .get_mut(&ssrc)
-            .map_or(0, |mut peer| peer.adjust_skew(difference))
     }
 }
 

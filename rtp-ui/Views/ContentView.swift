@@ -43,6 +43,9 @@ struct VideoView: View {
 
 
 struct ContentView: View {
+    
+    var endpoint: String?
+    
     @State private var viewModel = ViewModel()
     @State private var peerVideoManager = PeerVideoManager()
     
@@ -73,6 +76,7 @@ struct ContentView: View {
             }
         }
         .onAppear() {
+            run_network_runtime(endpoint, UInt(endpoint?.count ?? 0))
             peerVideoManager.registerToRust()
         }
         .toolbar(content: {

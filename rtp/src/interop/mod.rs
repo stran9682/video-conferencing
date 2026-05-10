@@ -1,8 +1,7 @@
 pub mod audio;
-pub mod download;
 pub mod network_runtime;
-pub mod upload;
 pub mod video;
+pub mod video_handling;
 
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;

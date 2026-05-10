@@ -18,7 +18,7 @@ class ViewModel {
     private let audioManager = AudioManager()
     
     init() {
-        rust_send_audio_manger_context(Unmanaged.passUnretained(audioManager).toOpaque())
+        rust_set_audio_manger_context(Unmanaged.passUnretained(audioManager).toOpaque())
         
         audioManager.startRecording()
         
