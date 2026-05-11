@@ -1,8 +1,5 @@
 use std::{
-    ffi::c_void,
-    io, slice,
-    str::FromStr,
-    sync::{Arc, OnceLock},
+    ffi::c_void, io, slice, str::FromStr, sync::{Arc, OnceLock}
 };
 
 use bytes::Bytes;
@@ -11,30 +8,17 @@ use iroh::{
     endpoint::{Connection, presets},
     protocol::{AcceptError, ProtocolHandler, Router},
 };
-use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::{
     interop::{
-        StreamType,
-        audio::{EncodedAudio, rtp_audio_receiver, rtp_audio_sender},
-        runtime,
-        video::{EncodedFrame, ReleaseCallback, rtp_frame_receiver, rtp_frame_sender},
+        ConnectionArgs, StreamType, audio::{EncodedAudio, OpusArgs, rtp_audio_sender}, runtime, start_receivers, video::{EncodedFrame, H264Parameters, ReleaseCallback, rtp_frame_sender}
     },
-    packets::{rtcp::start_rtcp, rtp::rtp::RTPHeader},
     session_management::{
         peer_manager::{ConnectionData, PeerManager},
-        signaling_server::{
-            OpusArgs, swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer,
-            swift_remove_video_peer,
-        },
+        swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer, swift_remove_video_peer,
     },
 };
-
-pub struct H264Parameters {
-    pub sps: Vec<u8>,
-    pub pps: Vec<u8>,
-}
 
 struct SwiftContext {
     context: *mut c_void,
@@ -50,6 +34,8 @@ static H264_PARAMETERS: OnceLock<H264Parameters> = OnceLock::new();
 static OPUS_PARAMETERS: OnceLock<OpusArgs> = OnceLock::new();
 
 static NODE: OnceLock<Router> = OnceLock::new();
+static FRAME_TX: OnceLock<mpsc::Sender<EncodedFrame>> = OnceLock::new();
+static AUDIO_TX: OnceLock<mpsc::Sender<EncodedAudio>> = OnceLock::new();
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_set_video_callback(context: *mut c_void) {
@@ -270,25 +256,6 @@ impl ProtocolHandler for RTP {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(tag = "type")]
-struct ConnectionArgs {
-    video_ssrc: u32,
-    audio_ssrc: u32,
-    peers: Vec<String>,
-
-    // Video
-    pps: Vec<u8>,
-    sps: Vec<u8>,
-
-    // Audio
-    sample_rate: f64,
-    channels: u32,
-}
-
-static FRAME_TX: OnceLock<mpsc::Sender<EncodedFrame>> = OnceLock::new();
-static AUDIO_TX: OnceLock<mpsc::Sender<EncodedAudio>> = OnceLock::new();
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_send_audio_sample(data: *const u8, len: usize, timestamp: u32) -> bool {
     let tx = match AUDIO_TX.get() {
@@ -447,75 +414,4 @@ fn setup_swift_add_peer(
     peer_manager.add_connection(connection.remote_id(), connection_data);
 
     println!("Added peer to connections");
-}
-
-fn start_receivers(peer_manager: &Arc<PeerManager>, connection: Connection) {
-    println!("Creating new set of receivers");
-
-    // These will route packets to the correct task
-    let (audio_tx, audio_rx) = mpsc::channel::<(RTPHeader, Bytes)>(200);
-    let (frame_tx, frame_rx) = mpsc::channel::<(RTPHeader, Bytes)>(200);
-    let (rtcp_tx, rtcp_rx) = mpsc::channel::<(Bytes, PublicKey)>(200);
-
-    let audio = peer_manager.clone();
-    runtime().spawn(async move {
-        if let Err(e) = rtp_audio_receiver(audio_rx, audio, 48_000).await {
-            eprintln!("audio receiver failed: {}", e);
-        }
-    });
-
-    let video = peer_manager.clone();
-    runtime().spawn(async move {
-        if let Err(e) = rtp_frame_receiver(frame_rx, video, 90_000).await {
-            eprintln!("frame receiver failed: {}", e);
-        }
-    });
-
-    println!("Audio video receivers created");
-
-    let rtcp = peer_manager.clone();
-    runtime().spawn(async move { start_rtcp(rtcp, rtcp_rx).await });
-
-    let peer_manager = peer_manager.clone();
-    runtime().spawn(async move {
-        loop {
-            let mut packet = match connection.read_datagram().await {
-                Ok(data) => data,
-                Err(e) => {
-                    let err = format!(
-                        "Video receiver of {} terminated {}",
-                        connection.remote_id(),
-                        e
-                    );
-                    remove_peer(&peer_manager, connection.remote_id());
-
-                    eprintln!("{}", err);
-                    return;
-                }
-            };
-
-            // Perkins:
-            // With the top bit stripped, the standard RTCP
-            // packet types correspond to an RTP payload type in the range 72 to 76. This range is
-            // reserved in the RTP specification and will not be used for valid RTP data packets, so
-            // detection of packets in this range implies that the stream is misdirected.
-            if packet[1] & 0x7F >= 72 {
-                let _ = rtcp_tx.send((packet, connection.remote_id())).await;
-                eprintln!("RTCP receiver was full")
-            } else {
-                let header = RTPHeader::deserialize(&mut packet);
-
-                let tx = if header.payload_type == 0 {
-                    &audio_tx
-                } else {
-                    //println!("Received: {}, {}, {}, {}", header.sequence_number, header.timestamp, header.marker, header.payload_type);
-                    &frame_tx
-                };
-
-                if let Err(e) = tx.send((header, packet)).await {
-                    eprintln!("video receive channel was full {}", e)
-                };
-            }
-        }
-    });
 }

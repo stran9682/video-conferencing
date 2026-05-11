@@ -23,6 +23,11 @@ unsafe extern "C" {
 
 pub type ReleaseCallback = extern "C" fn(*mut std::ffi::c_void);
 
+pub struct H264Parameters {
+    pub sps: Vec<u8>,
+    pub pps: Vec<u8>,
+}
+
 pub struct EncodedFrame {
     pub data: *const u8,
     pub len: usize,

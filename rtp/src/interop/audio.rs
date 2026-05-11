@@ -13,6 +13,11 @@ unsafe extern "C" {
     fn swift_receive_sample(context: *mut std::ffi::c_void, audioData: *const u8, length: usize);
 }
 
+pub struct OpusArgs {
+    pub sample_rate: f64,
+    pub channels: u32,
+}
+
 pub struct EncodedAudio {
     pub data: Bytes,
     pub timestamp: u32,
