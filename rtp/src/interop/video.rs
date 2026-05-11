@@ -137,8 +137,6 @@ pub async fn rtp_frame_receiver(
                 continue;
             };
 
-            println!("Frame: {}", frame.rtp_timestamp);
-
             let frame_bytes: Vec<Bytes> = frame
                 .coded_data
                 .into_iter()
@@ -154,8 +152,6 @@ pub async fn rtp_frame_receiver(
             };
 
             unsafe {
-                println!("Sending to swift");
-
                 swift_receive_frame(
                     context,
                     frame_data.as_mut_ptr() as *mut std::ffi::c_void,

@@ -37,13 +37,12 @@ pub fn get_fragments(
     while nalu_data_remaining > 0 {
         let current_fragment_size = std::cmp::min(max_fragment_size, nalu_data_remaining);
 
-        let rtp_header = rtp_session
-            .get_packet(
-                is_last_unit && max_fragment_size >= nalu_data_remaining, // VERY last one
-                timestamp,
-                current_fragment_size as u32 + 2,
-            );
-            
+        let rtp_header = rtp_session.get_packet(
+            is_last_unit && max_fragment_size >= nalu_data_remaining, // VERY last one
+            timestamp,
+            current_fragment_size as u32 + 2,
+        );
+
         rtp_header.serialize(&mut buf); // this will move the sequence number by 1
 
         //println!("Header (split packet): {}, {}, {}, {}", rtp_header.sequence_number, rtp_header.timestamp, rtp_header.marker, rtp_header.payload_type);

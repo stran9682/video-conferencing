@@ -3,13 +3,17 @@ pub mod network_runtime;
 pub mod video;
 pub mod video_handling;
 
-use std::sync::{Arc, OnceLock};
 use bytes::Bytes;
 use iroh::{PublicKey, endpoint::Connection};
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, OnceLock};
 use tokio::{runtime::Runtime, sync::mpsc};
 
-use crate::{interop::{audio::rtp_audio_receiver, network_runtime::remove_peer, video::rtp_frame_receiver}, packets::{rtcp::start_rtcp, rtp::rtp::RTPHeader}, session_management::peer_manager::PeerManager};
+use crate::{
+    interop::{audio::rtp_audio_receiver, network_runtime::remove_peer, video::rtp_frame_receiver},
+    packets::{rtcp::start_rtcp, rtp::rtp::RTPHeader},
+    session_management::peer_manager::PeerManager,
+};
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
@@ -50,16 +54,16 @@ fn start_receivers(peer_manager: &Arc<PeerManager>, connection: Connection) {
 
     let audio = peer_manager.clone();
     runtime().spawn(async move {
-        if let Err(e) = rtp_audio_receiver(audio_rx, audio, 48_000).await {
-            eprintln!("audio receiver failed: {}", e);
-        }
+        let _ = rtp_audio_receiver(audio_rx, audio, 48_000)
+            .await
+            .inspect_err(|e| eprintln!("audio receiver failed: {}", e));
     });
 
     let video = peer_manager.clone();
     runtime().spawn(async move {
-        if let Err(e) = rtp_frame_receiver(frame_rx, video, 90_000).await {
-            eprintln!("frame receiver failed: {}", e);
-        }
+        let _ = rtp_frame_receiver(frame_rx, video, 90_000)
+            .await
+            .inspect_err(|e| eprintln!("frame receiver failed: {}", e));
     });
 
     println!("Audio video receivers created");
@@ -73,14 +77,12 @@ fn start_receivers(peer_manager: &Arc<PeerManager>, connection: Connection) {
             let mut packet = match connection.read_datagram().await {
                 Ok(data) => data,
                 Err(e) => {
-                    let err = format!(
+                    remove_peer(&peer_manager, connection.remote_id());
+                    eprintln!(
                         "Video receiver of {} terminated {}",
                         connection.remote_id(),
                         e
                     );
-                    remove_peer(&peer_manager, connection.remote_id());
-
-                    eprintln!("{}", err);
                     return;
                 }
             };
@@ -91,21 +93,23 @@ fn start_receivers(peer_manager: &Arc<PeerManager>, connection: Connection) {
             // reserved in the RTP specification and will not be used for valid RTP data packets, so
             // detection of packets in this range implies that the stream is misdirected.
             if packet[1] & 0x7F >= 72 {
-                let _ = rtcp_tx.send((packet, connection.remote_id())).await;
-                eprintln!("RTCP receiver was full")
+                let _ = rtcp_tx
+                    .send((packet, connection.remote_id()))
+                    .await
+                    .inspect_err(|e| eprintln!("RTCP receiver was full: {e}"));
             } else {
                 let header = RTPHeader::deserialize(&mut packet);
 
                 let tx = if header.payload_type == 0 {
                     &audio_tx
                 } else {
-                    //println!("Received: {}, {}, {}, {}", header.sequence_number, header.timestamp, header.marker, header.payload_type);
                     &frame_tx
                 };
 
-                if let Err(e) = tx.send((header, packet)).await {
-                    eprintln!("video receive channel was full {}", e)
-                };
+                let _ = tx
+                    .send((header, packet))
+                    .await
+                    .inspect_err(|e| eprintln!("RTP receiver was full: {e}"));
             }
         }
     });

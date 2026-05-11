@@ -75,9 +75,7 @@ public func swift_receive_frame(
     _ context: UnsafeMutableRawPointer?,
     _ frameData: UnsafeMutableRawPointer?,
     _ frameDataLength: UInt
-) {
-    print("recieved frame")
-    
+) {    
     guard let context = context, let frameData = frameData else { return }
     
     let peerVideoModel = Unmanaged<PeerVideoModel>.fromOpaque(context).takeUnretainedValue()

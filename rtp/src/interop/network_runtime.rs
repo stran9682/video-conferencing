@@ -1,5 +1,8 @@
 use std::{
-    ffi::c_void, io, slice, str::FromStr, sync::{Arc, OnceLock}
+    ffi::c_void,
+    io, slice,
+    str::FromStr,
+    sync::{Arc, OnceLock},
 };
 
 use bytes::Bytes;
@@ -12,11 +15,15 @@ use tokio::sync::mpsc;
 
 use crate::{
     interop::{
-        ConnectionArgs, StreamType, audio::{EncodedAudio, OpusArgs, rtp_audio_sender}, runtime, start_receivers, video::{EncodedFrame, H264Parameters, ReleaseCallback, rtp_frame_sender}
+        ConnectionArgs, StreamType,
+        audio::{EncodedAudio, OpusArgs, rtp_audio_sender},
+        runtime, start_receivers,
+        video::{EncodedFrame, H264Parameters, ReleaseCallback, rtp_frame_sender},
     },
     session_management::{
         peer_manager::{ConnectionData, PeerManager},
-        swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer, swift_remove_video_peer,
+        swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer,
+        swift_remove_video_peer,
     },
 };
 

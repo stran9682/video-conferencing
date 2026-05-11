@@ -76,7 +76,7 @@ struct ContentView: View {
             }
         }
         .onAppear() {
-            run_network_runtime(endpoint, UInt(endpoint?.count ?? 0))
+            rust_run_network_runtime(endpoint, UInt(endpoint?.count ?? 0))
             peerVideoManager.registerToRust()
         }
         .toolbar(content: {

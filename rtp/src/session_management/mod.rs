@@ -1,7 +1,7 @@
 pub mod delay_calculator;
 pub mod peer_manager;
 
-use std::{ffi::c_void};
+use std::ffi::c_void;
 
 // TODO: update addr to use SSRC instead of address
 unsafe extern "C" {
