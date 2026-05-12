@@ -17,18 +17,21 @@ struct VideoSelectionView: View {
             VStack {
                 TextField("Enter endpoint", text: $endpoint)
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 200)
+                    .frame(maxWidth: .infinity)
 
                 TextField("Enter tag", text: $tag)
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 200)
+                    .frame(maxWidth: .infinity)
 
                 Button(action: {
                     isPlaying = true
                 }, label: {
                     Text("Submit")
+                        .frame(maxWidth: .infinity)
                 })
             }
+            .padding(100)
+
         } else {
             PlayerView(tag: tag, endpoint: endpoint)
         }

@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CString, c_void}, io, ptr, slice, str::FromStr, sync::{Arc, OnceLock}
+    ffi::{CString, c_void}, io, slice, str::FromStr, sync::{Arc, OnceLock}
 };
 
 use bytes::Bytes;
@@ -48,7 +48,7 @@ pub extern "C" fn rust_get_address(ptr: *mut i8) -> bool {
             unsafe {
                 std::ptr::copy_nonoverlapping(c_string.as_ptr() as *const i8, ptr, c_string.count_bytes());
             }
-            
+
             true
         }
         None => false

@@ -24,6 +24,7 @@ struct rtp_uiApp: App {
                 }, detail: {
                     ContentUnavailableView("Easy breezy", systemImage: "figure.dance")
                 })
+                .frame(minWidth: 500, minHeight: 300)
             } else {
                 ContentView(endpoint: endpoint)
                     .frame(minWidth: 650, minHeight: 500)
