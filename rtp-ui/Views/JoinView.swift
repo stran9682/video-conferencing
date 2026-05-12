@@ -5,25 +5,23 @@
 //  Created by Sebastian Tran on 1/10/26.
 //
 
-import SwiftUI
 import RTPmacos
+import SwiftUI
 
 struct JoinView: View {
-    
     @Binding var state: Bool
     @Binding var endpoint: String?
     @State private var address = ""
-    
+
     var body: some View {
-        
         VStack {
             Button(action: {
                 state = false
             }, label: {
                 Text("Start Session")
             })
-                .padding()
-            
+            .padding()
+
             TextField("Enter SIP address", text: $address)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 200)
@@ -34,7 +32,6 @@ struct JoinView: View {
             }, label: {
                 Text("Submit")
             })
-
         }
         .frame(minWidth: 500, minHeight: 300)
     }

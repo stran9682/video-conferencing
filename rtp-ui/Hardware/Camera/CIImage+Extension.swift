@@ -5,20 +5,17 @@
 //  Created by Sebastian Tran on 1/7/26.
 //
 
-import Foundation
 import CoreImage
+import Foundation
 
 extension CIImage {
-    
     var cgImage: CGImage? {
         let ciContext = CIContext()
-        
+
         guard let cgImage = ciContext.createCGImage(self, from: extent) else {
             return nil
         }
-        
+
         return cgImage
     }
-    
-    
 }

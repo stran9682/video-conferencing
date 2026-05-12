@@ -9,12 +9,12 @@ import SwiftUI
 
 struct PeerView: View, Identifiable {
     var id = UUID()
-    private var peerVideoModel : PeerVideoModel
-    
+    private var peerVideoModel: PeerVideoModel
+
     init(peerVideoModel: PeerVideoModel) {
         self.peerVideoModel = peerVideoModel
     }
-    
+
     var body: some View {
         CameraView(image: peerVideoModel.currentFrame)
     }

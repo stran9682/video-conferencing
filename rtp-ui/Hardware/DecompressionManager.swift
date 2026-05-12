@@ -1,5 +1,5 @@
 //
-//  VideoManager.swift
+//  DecompressionManager.swift
 //  rtp-ui
 //
 //  Created by Sebastian Tran on 1/19/26.
@@ -11,13 +11,12 @@ import VideoToolbox
 class DecompressionManager {
     var session: VTDecompressionSession?
     var formatDescription: CMFormatDescription?
-        
-    init (sps: UnsafePointer<UInt8>, spsLength: Int, pps: UnsafePointer<UInt8>, ppsLength: Int) {
-       
+
+    init(sps: UnsafePointer<UInt8>, spsLength: Int, pps: UnsafePointer<UInt8>, ppsLength: Int) {
         let paramSetPointers: [UnsafePointer<UInt8>] = [sps, pps]
-        
+
         let parameterSetSizes: [Int] = [spsLength, ppsLength]
-        
+
         CMVideoFormatDescriptionCreateFromH264ParameterSets(
             allocator: kCFAllocatorDefault,
             parameterSetCount: 2,
@@ -26,18 +25,18 @@ class DecompressionManager {
             nalUnitHeaderLength: 4,
             formatDescriptionOut: &formatDescription
         )
-        
+
         let decoderSpecification = [
-            kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: true as CFBoolean
+            kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: true as CFBoolean,
         ] as CFDictionary
-        
+
         // sets what object will be calling the callback (this one lol)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         var callbackRecord = VTDecompressionOutputCallbackRecord(
             decompressionOutputCallback: callback,
             decompressionOutputRefCon: refcon
         )
-        
+
         if let formatDescription = formatDescription {
             VTDecompressionSessionCreate(
                 allocator: kCFAllocatorDefault,
@@ -45,18 +44,17 @@ class DecompressionManager {
                 decoderSpecification: decoderSpecification,
                 imageBufferAttributes: nil,
                 outputCallback: &callbackRecord,
-                decompressionSessionOut: &session)
+                decompressionSessionOut: &session
+            )
         }
-        
+
         if let session = session {
             VTSessionSetProperty(session, key: kVTDecompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         }
     }
-    
-    
-    // this is called as part of the callback from decompression.
+
+    /// this is called as part of the callback from decompression.
     func processImage(_ image: CVImageBuffer, time: CMTime, duration: CMTime) {
-                
         var sampleBuffer: CMSampleBuffer?
         var sampleTiming = CMSampleTimingInfo(duration: duration, presentationTimeStamp: time, decodeTimeStamp: time)
 
@@ -66,7 +64,7 @@ class DecompressionManager {
             imageBuffer: image,
             formatDescriptionOut: &formatDesc
         )
-        
+
         guard let formatDescription = formatDesc else {
             fatalError("formatDescription")
         }
@@ -76,57 +74,54 @@ class DecompressionManager {
             imageBuffer: image,
             formatDescription: formatDescription,
             sampleTiming: &sampleTiming,
-            sampleBufferOut: &sampleBuffer)
-        
+            sampleBufferOut: &sampleBuffer
+        )
+
         if status != noErr {
             print("CMSampleBufferCreateReadyWithImageBuffer failure \(status)")
         }
 //        if let sb = sampleBuffer {
 //            handler?(sb)
 //        }
-        
-        
+
         var cgImage: CGImage?
-        
+
         let error = VTCreateCGImageFromCVPixelBuffer(image, options: nil, imageOut: &cgImage)
-        
+
         if error == noErr, let cgImage = cgImage {
             addToPreviewStream?(cgImage)
         }
     }
-    
-    func decode (sampleBuffer: CMSampleBuffer) {
+
+    func decode(sampleBuffer: CMSampleBuffer) {
         guard let session = session else { return }
-        
+
         let flags = VTDecodeFrameFlags._1xRealTimePlayback
         VTDecompressionSessionDecodeFrame(session, sampleBuffer: sampleBuffer, flags: flags, frameRefcon: nil, infoFlagsOut: nil)
-
     }
-    
+
     private var addToPreviewStream: ((CGImage) -> Void)?
-    
-    //  manages the continuous stream of data provided by it
-    //  through an AVCaptureVideoDataOutputSampleBufferDelegate object.
-    lazy var previewStream: AsyncStream<CGImage> = {
-        AsyncStream { continuation in
-            addToPreviewStream = { cgImage in
-                continuation.yield(cgImage)
-            }
+
+    ///  manages the continuous stream of data provided by it
+    ///  through an AVCaptureVideoDataOutputSampleBufferDelegate object.
+    lazy var previewStream: AsyncStream<CGImage> = AsyncStream { continuation in
+        addToPreviewStream = { cgImage in
+            continuation.yield(cgImage)
         }
-    }()
+    }
 }
 
-var callback: VTDecompressionOutputCallback = { refcon, sourceFrameRefCon, status, infoFlags, imageBuffer, time, duration in
+var callback: VTDecompressionOutputCallback = { refcon, _, status, _, imageBuffer, time, duration in
     guard let refcon = refcon,
           status == noErr,
           let imageBuffer = imageBuffer
     else {
         let errorMessage = SecCopyErrorMessageString(status, nil) as String? ?? "Unknown"
-        
+
         print("VTDecompressionOutputCallback \(errorMessage)")
         return
     }
-    
+
     let decoder = Unmanaged<DecompressionManager>.fromOpaque(refcon).takeUnretainedValue()
     decoder.processImage(imageBuffer, time: time, duration: duration)
 }

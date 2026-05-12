@@ -5,32 +5,30 @@
 //  Created by Sebastian Tran on 1/31/26.
 //
 
-import Foundation
 import CoreImage
+import Foundation
 import VideoToolbox
 
 @Observable
 class PeerVideoModel {
-    
     var currentFrame: CGImage?
-    
+
     private var decompressionManager: DecompressionManager
 
     init(pps: [UInt8], sps: [UInt8]) {
-        
         decompressionManager = DecompressionManager(
             sps: sps,
             spsLength: sps.count,
             pps: pps,
             ppsLength: pps.count
         )
-        
+
         Task {
             await handleFramePreviews()
         }
     }
-    
-    // update image every time frame is done being processed
+
+    /// update image every time frame is done being processed
     func handleFramePreviews() async {
         for await image in decompressionManager.previewStream {
             Task { @MainActor in
@@ -38,11 +36,11 @@ class PeerVideoModel {
             }
         }
     }
-    
-    // every time a frame comes in, place into decompression manager
-    func decompressFrame(blockBuffer : CMBlockBuffer) {
+
+    /// every time a frame comes in, place into decompression manager
+    func decompressFrame(blockBuffer: CMBlockBuffer) {
         var sampleBuffer: CMSampleBuffer?
-        
+
         var timingInfo = CMSampleTimingInfo(
             duration: .invalid,
             presentationTimeStamp: .invalid, // Or your actual RTP timestamp
@@ -60,11 +58,10 @@ class PeerVideoModel {
             sampleSizeArray: nil,
             sampleBufferOut: &sampleBuffer
         )
-        
-        if let sampleBuffer = sampleBuffer, status == noErr{
+
+        if let sampleBuffer = sampleBuffer, status == noErr {
             decompressionManager.decode(sampleBuffer: sampleBuffer)
-        }
-        else {
+        } else {
             print("\(status)")
         }
     }
@@ -75,20 +72,20 @@ public func swift_receive_frame(
     _ context: UnsafeMutableRawPointer?,
     _ frameData: UnsafeMutableRawPointer?,
     _ frameDataLength: UInt
-) {    
+) {
     guard let context = context, let frameData = frameData else { return }
-    
+
     let peerVideoModel = Unmanaged<PeerVideoModel>.fromOpaque(context).takeUnretainedValue()
-    
+
     var customBlockSource = CMBlockBufferCustomBlockSource()
     customBlockSource.version = kCMBlockBufferCustomBlockSourceVersion
-    
+
     customBlockSource.FreeBlock = { _, memoryBlock, _ in
         free(memoryBlock)
     }
-    
+
     var blockBuffer: CMBlockBuffer?
-    
+
     let status = CMBlockBufferCreateWithMemoryBlock(
         allocator: kCFAllocatorDefault,
         memoryBlock: frameData,
@@ -98,10 +95,12 @@ public func swift_receive_frame(
         offsetToData: 0,
         dataLength: Int(frameDataLength),
         flags: 0,
-        blockBufferOut: &blockBuffer)
-    
+        blockBufferOut: &blockBuffer
+    )
+
     if status == noErr, let blockBuffer = blockBuffer {
         // MARK: Send to be decompressed.
+
         peerVideoModel.decompressFrame(blockBuffer: blockBuffer)
     }
 }

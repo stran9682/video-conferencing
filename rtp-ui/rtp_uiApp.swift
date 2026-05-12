@@ -9,10 +9,9 @@ import SwiftUI
 
 @main
 struct rtp_uiApp: App {
-    
     @State var showingMainMenu: Bool = true
     @State var endpoint: String?
-    
+
     var body: some Scene {
         WindowGroup {
             if showingMainMenu {
@@ -25,8 +24,7 @@ struct rtp_uiApp: App {
                 }, detail: {
                     ContentUnavailableView("Easy breezy", systemImage: "figure.dance")
                 })
-            }
-            else {
+            } else {
                 ContentView(endpoint: endpoint)
                     .frame(minWidth: 650, minHeight: 500)
             }

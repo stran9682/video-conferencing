@@ -8,9 +8,8 @@
 import SwiftUI
 
 struct CameraView: View {
-    
     var image: CGImage?
-    
+
     var body: some View {
         if let image = image {
             Image(decorative: image, scale: 1)

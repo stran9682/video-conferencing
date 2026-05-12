@@ -6,48 +6,48 @@
 //
 
 import Foundation
-import VideoToolbox
 import RTPmacos
+import VideoToolbox
 
 class CompressionManager {
-    
     private var compressionSessionOut: VTCompressionSession?
     var pps: [UInt8]?
     var sps: [UInt8]?
-    
-    init () {
-        //let videoEncoderSpecification = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true as CFBoolean] as CFDictionary
-        
+
+    init() {
+        // let videoEncoderSpecification = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true as CFBoolean] as CFDictionary
+
         VTCompressionSessionCreate(allocator: kCFAllocatorDefault,
-                                         width: Int32(1280),
-                                         height: Int32(720),
-                                         // MARK: Copied from above ^ in session create
-                                         codecType: kCMVideoCodecType_H264,
-                                         encoderSpecification: nil,
-                                         imageBufferAttributes: nil,
-                                         compressedDataAllocator: nil,
-                                         outputCallback: outputCallback,
-                                         refcon: Unmanaged.passUnretained(self).toOpaque(), // WHAT DOES THIS DO?
-                                         compressionSessionOut: &compressionSessionOut)
-        
+                                   width: Int32(1280),
+                                   height: Int32(720),
+
+                                   // MARK: Copied from above ^ in session create
+
+                                   codecType: kCMVideoCodecType_H264,
+                                   encoderSpecification: nil,
+                                   imageBufferAttributes: nil,
+                                   compressedDataAllocator: nil,
+                                   outputCallback: outputCallback,
+                                   refcon: Unmanaged.passUnretained(self).toOpaque(), // WHAT DOES THIS DO?
+                                   compressionSessionOut: &compressionSessionOut)
+
         guard let compressionSession = compressionSessionOut else {
             print("VTCompressionSession creation failed")
             return
         }
-        
+
         VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_Main_AutoLevel)
         VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
         VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: 30 as CFNumber)
         VTCompressionSessionPrepareToEncodeFrames(compressionSession)
-        
     }
-    
-    public func compressFrame(pixelBuffer : CVImageBuffer, presentationTimeStamp: CMTime) {
+
+    func compressFrame(pixelBuffer: CVImageBuffer, presentationTimeStamp: CMTime) {
         guard let session = compressionSessionOut else {
             return
         }
-        
+
         let status = VTCompressionSessionEncodeFrame(
             session,
             imageBuffer: pixelBuffer,
@@ -57,16 +57,14 @@ class CompressionManager {
             sourceFrameRefcon: nil,
             infoFlagsOut: nil
         )
-        
+
         if status != noErr {
             print("Encoding failed: \(status)")
         }
-
     }
 }
 
-private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameRefCon, status, infoFlags, sampleBuffer in
-    
+private let outputCallback: VTCompressionOutputCallback = { refcon, _, status, _, sampleBuffer in
     guard let refcon = refcon,
           status == noErr,
           let sampleBuffer = sampleBuffer
@@ -74,37 +72,35 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
         print("H264Coder outputCallback sampleBuffer NULL or status: \(status)")
         return
     }
-    
-    if (!CMSampleBufferDataIsReady(sampleBuffer))
-    {
-        print("didCompressH264 data is not ready...");
-        return;
+
+    if !CMSampleBufferDataIsReady(sampleBuffer) {
+        print("didCompressH264 data is not ready...")
+        return
     }
-    
+
     guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
         print("Failed to convert buffer")
         return
     }
-    
+
     // MARK: Transmitting SPS and PPS data.
+
     // https://stackoverflow.com/questions/28396622/extracting-h264-from-cmblockbuffer
-    
-    guard let attachmentsArray:CFArray = CMSampleBufferGetSampleAttachmentsArray(
+
+    guard let attachmentsArray: CFArray = CMSampleBufferGetSampleAttachmentsArray(
         sampleBuffer,
         createIfNecessary: false
     ) else { return }
-    
-    if (CFArrayGetCount(attachmentsArray) > 0) {
-    
+
+    if CFArrayGetCount(attachmentsArray) > 0 {
         let cfDict = CFArrayGetValueAtIndex(attachmentsArray, 0)
         let dictRef: CFDictionary = unsafeBitCast(cfDict, to: CFDictionary.self)
 
         let value = CFDictionaryGetValue(dictRef, unsafeBitCast(kCMSampleAttachmentKey_NotSync, to: UnsafeRawPointer.self))
-        
-        if(value == nil) {
+
+        if value == nil {
             var description: CMFormatDescription = CMSampleBufferGetFormatDescription(sampleBuffer)!
-            
-                        
+
             // First, get SPS
             var sparamSetCount: size_t = 0
             var sparamSetSize: size_t = 0
@@ -115,8 +111,9 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
                 parameterSetPointerOut: &sparameterSetPointer,
                 parameterSetSizeOut: &sparamSetSize,
                 parameterSetCountOut: &sparamSetCount,
-                nalUnitHeaderLengthOut: nil)
-        
+                nalUnitHeaderLengthOut: nil
+            )
+
             // Then, get PPS
             var pparamSetCount: size_t = 0
             var pparamSetSize: size_t = 0
@@ -127,59 +124,58 @@ private let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameR
                 parameterSetPointerOut: &pparameterSetPointer,
                 parameterSetSizeOut: &pparamSetSize,
                 parameterSetCountOut: &pparamSetCount,
-                nalUnitHeaderLengthOut: nil)
-            
-            
+                nalUnitHeaderLengthOut: nil
+            )
+
             let spsArray = Array(UnsafeBufferPointer(start: pparameterSetPointer, count: pparamSetSize))
-            
+
             let ppsArray = Array(UnsafeBufferPointer(start: sparameterSetPointer, count: sparamSetSize))
-            
+
             let compression = Unmanaged<CompressionManager>.fromOpaque(refcon).takeUnretainedValue()
-            
-            if (
-                compression.pps != ppsArray && compression.sps != spsArray &&
-                p_statusCode == noErr && s_statusCode == noErr
-            ) {
+
+            if
+                compression.pps != ppsArray, compression.sps != spsArray,
+                p_statusCode == noErr, s_statusCode == noErr
+            {
                 print("Updating compression config")
-                
+
                 compression.pps = ppsArray
                 compression.sps = spsArray
-                
+
                 rust_set_h264_args(pparameterSetPointer, UInt(pparamSetSize), sparameterSetPointer, UInt(sparamSetSize))
             }
         }
     }
-    
+
     // MARK: Presentation Timestamp
-    let pts = sampleBuffer.presentationTimeStamp.seconds * 90_000
-    let timestamp = UInt32(UInt64(pts) & 0xFFFFFFFF)
-    
+
+    let pts = sampleBuffer.presentationTimeStamp.seconds * 90000
+    let timestamp = UInt32(UInt64(pts) & 0xFFFF_FFFF)
+
     // MARK: Pointers to data
-    
+
     // the h.264 data, get pointer to cmblockbuffer
     var length = 0
     var dataPointer: UnsafeMutablePointer<Int8>?
     let status = CMBlockBufferGetDataPointer(dataBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
-    
+
     guard status == noErr, let dataPointer = dataPointer else { return }
-    
+
     // now, the data to the holding object (sample buffer)
-    let unmanagedBuffer = Unmanaged.passRetained(sampleBuffer)  // increments the counter
-    let context = unmanagedBuffer.toOpaque()                    // get a pointer to pass to C
-    
+    let unmanagedBuffer = Unmanaged.passRetained(sampleBuffer) // increments the counter
+    let context = unmanagedBuffer.toOpaque() // get a pointer to pass to C
+
     rust_send_frame(dataPointer, UInt(length), context, swift_release_frame_buffer, timestamp)
 }
 
 func swift_release_frame_buffer(_ context: UnsafeMutableRawPointer?) {
     guard let context = context else { return }
-    
+
     // Release the manual retain
-    let _ = Unmanaged<CMSampleBuffer>.fromOpaque(context).takeRetainedValue()
+    _ = Unmanaged<CMSampleBuffer>.fromOpaque(context).takeRetainedValue()
 }
 
 @_cdecl("swift_send_cmclocktime")
 func swift_send_cmclocktime() -> Float64 {
-    let now = CMClockGetTime(CMClockGetHostTimeClock()).seconds
-    
-    return now
+    return CMClockGetTime(CMClockGetHostTimeClock()).seconds
 }

@@ -1,5 +1,5 @@
 //
-//  PeerVideoManager.swift
+//  PeerViewManager.swift
 //  rtp-ui
 //
 //  Created by Sebastian Tran on 1/31/26.
@@ -8,31 +8,27 @@
 import Foundation
 import RTPmacos
 
-
 @Observable
 class PeerVideoManager {
-    
-    // observing this in particular to get video feeds of our peers
-    private var peers: Dictionary<UInt32, PeerView> = [:]
-    
+    /// observing this in particular to get video feeds of our peers
+    private var peers: [UInt32: PeerView] = [:]
+
     var allPeers: [PeerView] {
         Array(peers.values)
     }
-    
-    func addPeer(peerView : PeerView, ssrc: UInt32) {
-        
+
+    func addPeer(peerView: PeerView, ssrc: UInt32) {
         DispatchQueue.main.async {
             self.peers[ssrc] = peerView
         }
-        
     }
-    
+
     func removePeer(ssrc: UInt32) {
         DispatchQueue.main.async {
             self.peers.removeValue(forKey: ssrc)
         }
     }
-    
+
     func registerToRust() {
         let refcon = Unmanaged.passRetained(self).toOpaque()
         rust_set_video_callback(refcon)
@@ -49,19 +45,20 @@ public func swift_receive_pps_sps(
     _ ssrc: UInt32
 ) -> UnsafeMutableRawPointer? {
     guard let context = context else { return nil }
-    
+
     let peerVideoManager = Unmanaged<PeerVideoManager>.fromOpaque(context).takeUnretainedValue()
-    
+
     // copy the data - rust will drop the original
     let pps = Array(UnsafeBufferPointer(start: pps, count: Int(ppsLength)))
     let sps = Array(UnsafeBufferPointer(start: sps, count: Int(spsLength)))
-    
+
     let model = PeerVideoModel(pps: pps, sps: sps)
     let view = PeerView(peerVideoModel: model)
-    
+
     peerVideoManager.addPeer(peerView: view, ssrc: ssrc)
 
     // MARK: return the pointer of the peer model
+
     return Unmanaged.passRetained(model).toOpaque()
 }
 
@@ -72,10 +69,10 @@ public func swift_remove_video_peer(
     _ peer_context: UnsafeMutableRawPointer?
 ) {
     guard let video_manager_context, let peer_context else { return }
-    
+
     let peerVideoManager = Unmanaged<PeerVideoManager>.fromOpaque(video_manager_context).takeUnretainedValue()
-    
+
     peerVideoManager.removePeer(ssrc: ssrc)
-    
-    let _ = Unmanaged<ParticipantAudio>.fromOpaque(peer_context).takeRetainedValue()
+
+    _ = Unmanaged<ParticipantAudio>.fromOpaque(peer_context).takeRetainedValue()
 }
