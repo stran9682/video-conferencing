@@ -1,8 +1,5 @@
 use std::{
-    ffi::c_void,
-    io, slice,
-    str::FromStr,
-    sync::{Arc, OnceLock},
+    ffi::{CString, c_void}, io, ptr, slice, str::FromStr, sync::{Arc, OnceLock}
 };
 
 use bytes::Bytes;
@@ -15,15 +12,11 @@ use tokio::sync::mpsc;
 
 use crate::{
     interop::{
-        ConnectionArgs, StreamType,
-        audio::{EncodedAudio, OpusArgs, rtp_audio_sender},
-        runtime, start_receivers,
-        video::{EncodedFrame, H264Parameters, ReleaseCallback, rtp_frame_sender},
+        ConnectionArgs, StreamType, audio::{EncodedAudio, OpusArgs, rtp_audio_sender}, runtime, start_receivers, video::{EncodedFrame, H264Parameters, ReleaseCallback, rtp_frame_sender}
     },
     session_management::{
         peer_manager::{ConnectionData, PeerManager},
-        swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer,
-        swift_remove_video_peer,
+        swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer, swift_remove_video_peer,
     },
 };
 
@@ -43,6 +36,24 @@ static OPUS_PARAMETERS: OnceLock<OpusArgs> = OnceLock::new();
 static NODE: OnceLock<Router> = OnceLock::new();
 static FRAME_TX: OnceLock<mpsc::Sender<EncodedFrame>> = OnceLock::new();
 static AUDIO_TX: OnceLock<mpsc::Sender<EncodedAudio>> = OnceLock::new();
+
+static ADDRESS: OnceLock<String> = OnceLock::new();
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_get_address(ptr: *mut i8) -> bool {
+    match ADDRESS.get() {
+        Some(addr) => {
+            let c_string = CString::new(addr.clone()).expect("CString::new failed");
+
+            unsafe {
+                std::ptr::copy_nonoverlapping(c_string.as_ptr() as *const i8, ptr, c_string.count_bytes());
+            }
+            
+            true
+        }
+        None => false
+    }
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_set_video_callback(context: *mut c_void) {
@@ -124,6 +135,7 @@ async fn network_runtime(endpoint_str: Option<String>) -> anyhow::Result<()> {
     endpoint.online().await;
 
     println!("Our address: {}", endpoint.id());
+    let _ = ADDRESS.set(endpoint.id().to_string()).inspect_err(|e| eprintln!("Address already set: {e}"));
 
     let peer_manager = Arc::new(PeerManager::new());
     let rtp_session = RTP::new(peer_manager.clone());
@@ -164,7 +176,7 @@ async fn network_runtime(endpoint_str: Option<String>) -> anyhow::Result<()> {
 
         // Connect to everyone else now
         for addr in response.peers {
-            let _ = connect(&endpoint, &addr, &peer_manager)
+            let _ = connect(&endpoint, addr.trim(), &peer_manager)
                 .await
                 .inspect_err(|e| eprintln!("Failed to connect to {}, Err: {} ", addr, e))?;
         }

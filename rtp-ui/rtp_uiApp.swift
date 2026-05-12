@@ -32,6 +32,6 @@ struct rtp_uiApp: App {
             }
         }
         .windowResizability(.contentSize)
-        .windowToolbarStyle(.unifiedCompact)
+        .windowStyle(.hiddenTitleBar)
     }
 }

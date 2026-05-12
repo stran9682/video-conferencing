@@ -7,6 +7,8 @@ typedef void (*ReleaseCallback)(void*);
 
 extern void swift_receive_sample(void *context, const uint8_t *audioData, uintptr_t length);
 
+bool rust_get_address(int8_t *ptr);
+
 void rust_set_video_callback(void *context);
 
 void rust_set_audio_manger_context(void *context);

@@ -54,13 +54,46 @@ struct ContentView: View {
     @State var disableInput = false
     @State var recordingMenuOpen = false
     
+    @State var showOverlay: Bool? = nil
+    
     var body: some View {
         HStack(spacing: 0){
             VStack(spacing: 0){
                 VideoView(peerVideoManager: peerVideoManager, viewModel: viewModel)
                 
-                UIView()
+                UIView(action: { result in
+                    Task {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showOverlay = result
+                        }
+                        
+                       
+                        try? await Task.sleep(for: .seconds(0.5))
+                        
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showOverlay = nil
+                        }
+                    }
+                })
             }
+            .overlay(alignment: .top, content: {
+                if showOverlay != nil && showOverlay! {
+                    Text("Copied to clipboard!")
+                        .padding()
+                        .background(Color.green.opacity(0.7))
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                else if showOverlay != nil {
+                    Text("Not quite ready yet")
+                        .padding()
+                        .background(Color.red.opacity(0.7))
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            })
             
             if recordingMenuOpen {
                 ConfigurationView(screenRecorder: screenRecorder)
@@ -80,6 +113,7 @@ struct ContentView: View {
             peerVideoManager.registerToRust()
         }
         .toolbar(content: {
+            Spacer()
             Button(action: {
                 recordingMenuOpen = !recordingMenuOpen
             }) {
