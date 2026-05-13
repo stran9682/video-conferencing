@@ -30,30 +30,49 @@ struct FileRow: View {
     var url: URL
     @Binding var selectedURL: URL?
     @State var exportMenuOpen: Bool = false
+    @State var shareMenuOpen: Bool = false
 
     var body: some View {
         VStack {
-            HStack(alignment: .top) {
-                Button(action: {
-                    selectedURL = url
-                }) {
-                    Label(url.lastPathComponent, systemImage: "play.circle")
-                        .padding(5)
-                }
-                .buttonStyle(PlainButtonStyle())
+            VStack {
+                HStack(alignment: .center) {
+                    Button(action: {
+                        selectedURL = url
+                    }) {
+                        Image(systemName: "play.circle")
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.borderless)
 
-                Spacer()
+                    Button(action: {
+                        shareMenuOpen.toggle()
+                    }) {
+                        Text(url.lastPathComponent)
+                            .foregroundStyle(Color(.white))
+                    }
+                    .buttonStyle(.borderless)
 
-                Button(action: {
-                    exportMenuOpen = !exportMenuOpen
-                }) {
-                    Label("Upload", systemImage: "paperplane.fill")
-                        .padding(5)
-                        .cornerRadius(10)
+                    Spacer()
+
+                    Button(action: {
+                        exportMenuOpen = !exportMenuOpen
+                    }) {
+                        Label("Upload", systemImage: "paperplane.fill")
+                    }
+                    .buttonStyle(.borderless)
                 }
-                .buttonStyle(PlainButtonStyle())
+
+                if shareMenuOpen {
+                    UserListView()
+                        .padding(10)
+                        .frame(height: 200)
+                }
             }
+            .padding(5)
+
+            Divider()
         }
+        .listRowSeparator(.hidden)
         .sheet(isPresented: $exportMenuOpen, content: {
             uploadView(url: url)
 

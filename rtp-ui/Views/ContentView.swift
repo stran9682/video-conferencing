@@ -95,6 +95,7 @@ struct ContentView: View {
                 ConfigurationView(screenRecorder: screenRecorder)
                     .frame(minWidth: 280, maxWidth: 280)
                     .disabled(disableInput)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .task {
@@ -111,7 +112,10 @@ struct ContentView: View {
         .toolbar(content: {
             Spacer()
             Button(action: {
-                recordingMenuOpen = !recordingMenuOpen
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    recordingMenuOpen = !recordingMenuOpen
+                }
+
             }) {
                 Label("record", systemImage: "record.circle")
                     .padding(5)

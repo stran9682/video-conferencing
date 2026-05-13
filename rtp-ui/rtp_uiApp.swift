@@ -25,12 +25,13 @@ struct rtp_uiApp: App {
                     ContentUnavailableView("Easy breezy", systemImage: "figure.dance")
                 })
                 .frame(minWidth: 500, minHeight: 300)
+                .toolbar(removing: .title)
             } else {
                 ContentView(endpoint: endpoint)
                     .frame(minWidth: 650, minHeight: 500)
+                    .toolbar(removing: .title)
             }
         }
         .windowResizability(.contentSize)
-        .windowStyle(.hiddenTitleBar)
     }
 }

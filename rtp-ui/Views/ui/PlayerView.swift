@@ -31,8 +31,6 @@ struct PlayerView: View {
             }
         }
         .task {
-            // Use the task modifier to defer creating the player to ensure
-            // SwiftUI creates it only once when it first presents the view.
             let query = tag.split(separator: ":")
 
             if query.count == 2 {
