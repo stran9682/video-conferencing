@@ -107,7 +107,7 @@ struct uploadView: View {
 
                 ToolbarItem(placement: .confirmationAction, content: {
                     Button("Upload") {
-                        swift_upload(
+                        rust_upload(
                             url.relativePath,
                             UInt(url.relativePath.count),
                             endpointAddress,

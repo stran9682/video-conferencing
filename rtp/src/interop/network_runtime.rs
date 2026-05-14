@@ -1,5 +1,8 @@
 use std::{
-    ffi::{CString, c_void}, io, slice, str::FromStr, sync::{Arc, OnceLock}
+    ffi::{CString, c_void},
+    io, slice,
+    str::FromStr,
+    sync::{Arc, OnceLock},
 };
 
 use bytes::Bytes;
@@ -12,11 +15,15 @@ use tokio::sync::mpsc;
 
 use crate::{
     interop::{
-        ConnectionArgs, StreamType, audio::{EncodedAudio, OpusArgs, rtp_audio_sender}, runtime, start_receivers, video::{EncodedFrame, H264Parameters, ReleaseCallback, rtp_frame_sender}
+        ConnectionArgs, StreamType,
+        audio::{EncodedAudio, OpusArgs, rtp_audio_sender},
+        runtime, start_receivers,
+        video::{EncodedFrame, H264Parameters, ReleaseCallback, rtp_frame_sender},
     },
     session_management::{
         peer_manager::{ConnectionData, PeerManager},
-        swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer, swift_remove_video_peer,
+        swift_receive_audio_config, swift_receive_pps_sps, swift_remove_audio_peer,
+        swift_remove_video_peer,
     },
 };
 
@@ -46,12 +53,16 @@ pub extern "C" fn rust_get_address(ptr: *mut i8) -> bool {
             let c_string = CString::new(addr.clone()).expect("CString::new failed");
 
             unsafe {
-                std::ptr::copy_nonoverlapping(c_string.as_ptr() as *const i8, ptr, c_string.count_bytes());
+                std::ptr::copy_nonoverlapping(
+                    c_string.as_ptr() as *const i8,
+                    ptr,
+                    c_string.count_bytes(),
+                );
             }
 
             true
         }
-        None => false
+        None => false,
     }
 }
 
@@ -135,7 +146,9 @@ async fn network_runtime(endpoint_str: Option<String>) -> anyhow::Result<()> {
     endpoint.online().await;
 
     println!("Our address: {}", endpoint.id());
-    let _ = ADDRESS.set(endpoint.id().to_string()).inspect_err(|e| eprintln!("Address already set: {e}"));
+    let _ = ADDRESS
+        .set(endpoint.id().to_string())
+        .inspect_err(|e| eprintln!("Address already set: {e}"));
 
     let peer_manager = Arc::new(PeerManager::new());
     let rtp_session = RTP::new(peer_manager.clone());

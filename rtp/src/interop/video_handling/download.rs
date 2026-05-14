@@ -3,7 +3,7 @@ use std::{ffi::c_void, slice, str::FromStr};
 use tokio::fs::{File, create_dir_all};
 use uuid::Uuid;
 
-use crate::interop::runtime;
+use crate::interop::{runtime, video_handling::get_key};
 
 unsafe extern "C" {
     fn swift_receive_video(context: *mut c_void, path: *const u8);
@@ -64,7 +64,13 @@ pub extern "C" fn swift_download(
 
 async fn query_hash(download_callback: &DownloadCallback) -> anyhow::Result<()> {
     // TODO: use your persisted secret key to bind
-    let client_endpoint = Endpoint::bind(presets::N0).await?;
+    let secret_key = get_key().await?;
+
+    let client_endpoint = iroh::Endpoint::builder(presets::N0)
+        .secret_key(secret_key)
+        .bind()
+        .await?;
+
     let endpoint_id = EndpointId::from_str(download_callback.endpoint_id.trim()).unwrap();
 
     let conn = client_endpoint.connect(endpoint_id, b"query").await?;
@@ -85,6 +91,8 @@ async fn query_hash(download_callback: &DownloadCallback) -> anyhow::Result<()> 
     unsafe {
         swift_receive_video(download_callback.context, path.as_ptr());
     }
+
+    conn.close(0u32.into(), b"all done!");
 
     Ok(())
 }

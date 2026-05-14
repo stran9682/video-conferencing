@@ -32,6 +32,13 @@ bool rust_send_frame(const uint8_t *data,
 
 extern void swift_receive_frame(void *context, void *frameData, uintptr_t frameDataLength);
 
+void rust_setup_docs(void);
+
+void rust_upload(const uint8_t *file_path,
+                 uintptr_t file_path_len,
+                 const uint8_t *endpoint_id,
+                 uintptr_t endpoint_id_length);
+
 extern void swift_receive_video(void *context, const uint8_t *path);
 
 extern void swift_release_pointer(void *context);
@@ -41,11 +48,6 @@ void swift_download(const uint8_t *tag,
                     const uint8_t *endpoint,
                     uintptr_t endpoint_length,
                     void *context);
-
-void swift_upload(const uint8_t *file_path,
-                  uintptr_t file_path_len,
-                  const uint8_t *endpoint_id,
-                  uintptr_t endpoint_id_length);
 
 extern double swift_send_cmclocktime(void);
 

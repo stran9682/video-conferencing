@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import RTPmacos
 
 @main
 struct rtp_uiApp: App {
@@ -26,6 +27,10 @@ struct rtp_uiApp: App {
                 })
                 .frame(minWidth: 500, minHeight: 300)
                 .toolbar(removing: .title)
+                .onAppear {
+                    rust_setup_docs()
+                    print("i have appeared")
+                }
             } else {
                 ContentView(endpoint: endpoint)
                     .frame(minWidth: 650, minHeight: 500)
