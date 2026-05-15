@@ -1,4 +1,4 @@
-use iroh::{Endpoint, EndpointId, endpoint::presets};
+use iroh::{EndpointId, endpoint::presets};
 use std::{ffi::c_void, slice, str::FromStr};
 use tokio::fs::{File, create_dir_all};
 use uuid::Uuid;

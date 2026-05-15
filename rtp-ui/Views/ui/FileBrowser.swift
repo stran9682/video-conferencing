@@ -43,14 +43,9 @@ struct FileRow: View {
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.borderless)
-
-                    Button(action: {
-                        shareMenuOpen.toggle()
-                    }) {
-                        Text(url.lastPathComponent)
-                            .foregroundStyle(Color(.white))
-                    }
-                    .buttonStyle(.borderless)
+                    
+                    Text(url.lastPathComponent)
+                        .foregroundStyle(Color(.white))
 
                     Spacer()
 
@@ -60,12 +55,6 @@ struct FileRow: View {
                         Label("Upload", systemImage: "paperplane.fill")
                     }
                     .buttonStyle(.borderless)
-                }
-
-                if shareMenuOpen {
-                    UserListView()
-                        .padding(10)
-                        .frame(height: 200)
                 }
             }
             .padding(5)

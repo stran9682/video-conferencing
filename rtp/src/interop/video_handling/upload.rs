@@ -2,17 +2,20 @@ use std::{io::Error, str::FromStr, sync::OnceLock};
 
 use iroh::{PublicKey, endpoint::presets, protocol::Router};
 use iroh_blobs::{BlobsProtocol, store::fs::FsStore};
-use iroh_docs::{DocTicket, protocol::Docs};
+use iroh_docs::{DocTicket, protocol::Docs, store::Query};
 use iroh_gossip::Gossip;
 use tokio::{
     fs::File,
     io::{self},
 };
+use n0_future::StreamExt;
 
-use crate::interop::video_handling::{AuthorizedUsers, get_key};
+use crate::interop::video_handling::{AuthorizedUsers, UpdateListCallbackContainer, get_key};
 
+// I LOVE STATICS WE ALL SAY IN UNISON!
 static ROUTER: OnceLock<Router> = OnceLock::new();
 static DOCS: OnceLock<Docs> = OnceLock::new();
+static BLOBS: OnceLock<FsStore> = OnceLock::new();
 
 pub async fn run_router() -> anyhow::Result<()> {
     let secret_key = get_key().await?;
@@ -31,9 +34,6 @@ pub async fn run_router() -> anyhow::Result<()> {
     let docs = Docs::persistent("./blobs".into())
         .spawn(endpoint.clone(), (*blobs).clone(), gossip.clone())
         .await?;
-
-    let author_id = docs.author_create().await?;
-    docs.author_set_default(author_id).await?;
 
     println!("Started the dependencies");
 
@@ -59,6 +59,14 @@ pub async fn run_router() -> anyhow::Result<()> {
 
     println!("Saved the docs");
 
+
+    if let Err(_) = BLOBS.set(blobs) {
+        eprintln!("Blobs already created");
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "Blob already created").into());
+    }
+
+    println!("Saved the blobs");
+
     Ok(())
 }
 
@@ -81,7 +89,7 @@ pub async fn upload_handler(file_path: String, endpoint_id: String) -> anyhow::R
 
     let (mut send, mut recv) = connection.open_bi().await?;
 
-    let mut video = File::open(file_path).await?;
+    let mut video = File::open(&file_path).await?;
 
     tokio::io::copy(&mut video, &mut send).await?;
 
@@ -100,18 +108,68 @@ pub async fn upload_handler(file_path: String, endpoint_id: String) -> anyhow::R
     println!("Doc ID : # Clips: {}", tag);
 
     // Now save the document
+    let author = docs.author_create().await?; // TODO adjust this
     let doc = docs.import(ticket).await?;
 
-    // add ourselves to the list of authorized users.
     let entry = AuthorizedUsers {
         authorized_users: vec![endpoint.id().to_string()],
     };
     let entry = serde_json::to_vec(&entry)?;
 
-    doc.set_bytes(docs.author_default().await?, tag, entry)
+    doc.set_bytes(author, "accesslist", entry)
         .await?;
 
     connection.close(0u32.into(), b"all done!");
+
+    Ok(())
+}
+
+// Tough times call for tough solutions
+pub async fn get_everything(container: UpdateListCallbackContainer) -> anyhow::Result<()> {
+    let docs = DOCS.get().ok_or(Error::new(
+        io::ErrorKind::NotFound,
+        "Docs wasn't initialized, have you started the router?",
+    ))?;
+
+    let blobs = BLOBS.get().ok_or(Error::new(
+        io::ErrorKind::NotFound,
+        "Blobs wasn't initialized, have you started the router?",
+    ))?;
+
+    println!("Everything good to start");
+
+    let mut res = docs.list().await?;
+
+    while let Some(entry) = res.next().await {
+
+        println!("Have a document");
+
+        let (namespace, _) = entry?;
+
+        let doc = docs.open(namespace).await?.ok_or(Error::new(
+            io::ErrorKind::InvalidFilename,
+            "Couldn't open document",
+        ))?;
+
+        println!("Opening document");
+
+        if let Some(doc_entry) = doc
+            .get_one(Query::single_latest_per_key().key_exact("accesslist"))
+            .await?
+        {
+            println!("Getting access list entry");
+
+            let hash = doc_entry.content_hash();
+
+            let bytes = blobs.get_bytes(hash).await?;
+
+            println!("Sending to swift");
+
+            (container.update_list_callback)(container.context, bytes.as_ptr(), bytes.len())
+        }
+    }
+
+    println!("Exiting");
 
     Ok(())
 }

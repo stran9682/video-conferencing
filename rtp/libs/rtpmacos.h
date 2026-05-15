@@ -5,6 +5,8 @@
 
 typedef void (*ReleaseCallback)(void*);
 
+typedef void (*UpdateListCallback)(void *context, const uint8_t *ptr, uintptr_t count);
+
 extern void swift_receive_sample(void *context, const uint8_t *audioData, uintptr_t length);
 
 bool rust_get_address(int8_t *ptr);
@@ -38,6 +40,8 @@ void rust_upload(const uint8_t *file_path,
                  uintptr_t file_path_len,
                  const uint8_t *endpoint_id,
                  uintptr_t endpoint_id_length);
+
+void rust_get_remote_videos(void *context, UpdateListCallback update_list_callback);
 
 extern void swift_receive_video(void *context, const uint8_t *path);
 

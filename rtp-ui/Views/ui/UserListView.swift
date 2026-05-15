@@ -7,12 +7,18 @@
 
 import SwiftUI
 
-struct UserListView: View {
-    // TODO: replace this with nothing
-    @State var mockData: [UserRowModel] = []
+struct SharedWithListItemView: View {
+    
+    // TODO: fix up this initalizer
+    init(users: [String]) {
+        mockData = users.map({ user in
+            UserRowModel(user: user)
+        })
+    }
 
     @State private var newViewer = ""
-
+    @State private var mockData: [UserRowModel]
+    
     var body: some View {
         VStack {
             HStack(alignment: .center) {
@@ -90,5 +96,5 @@ class UserRowModel: Identifiable {
 }
 
 #Preview {
-    UserListView()
+    SharedWithListItemView(users: [])
 }

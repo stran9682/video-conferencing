@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::interop::{
     runtime,
-    video_handling::upload::{run_router, upload_handler},
+    video_handling::upload::{get_everything, run_router, upload_handler},
 };
 
 pub mod download;
@@ -50,6 +50,30 @@ pub extern "C" fn rust_upload(
     });
 }
 
+
+pub type UpdateListCallback = extern "C" fn(context: *mut std::ffi::c_void, ptr: *const u8, count: usize);
+
+pub struct UpdateListCallbackContainer {
+    context: *mut std::ffi::c_void, 
+    update_list_callback: UpdateListCallback
+}
+
+unsafe impl Send for UpdateListCallbackContainer {}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_get_remote_videos (context: *mut std::ffi::c_void, update_list_callback: UpdateListCallback) {
+    let container = UpdateListCallbackContainer {
+        context,
+        update_list_callback
+    };
+
+    runtime().spawn(async move {
+        if let Err(e) =  get_everything( container).await {
+            eprintln!("failed to get access lists: {}", e);
+        };
+    });
+}
+
 async fn get_key() -> io::Result<SecretKey> {
     if tokio::fs::try_exists(KEY_PATH).await? {
         let bytes = tokio::fs::read(KEY_PATH).await?;
@@ -73,5 +97,5 @@ async fn store_key() -> io::Result<SecretKey> {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub struct AuthorizedUsers {
-    authorized_users: Vec<String>,
+    pub authorized_users: Vec<String>,
 }
