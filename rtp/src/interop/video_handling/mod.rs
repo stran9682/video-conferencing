@@ -50,25 +50,44 @@ pub extern "C" fn rust_upload(
     });
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_change_permissions(list_ptr: *const u8, ptr_length: usize) {
+    let slice = unsafe { slice::from_raw_parts(list_ptr, ptr_length) };
+    let slice = slice.to_owned(); // we're gonna copy to avoid messy memory management with swift.
 
-pub type UpdateListCallback = extern "C" fn(context: *mut std::ffi::c_void, ptr: *const u8, count: usize);
+    let authorized_users: AuthorizedUsers = match serde_json::from_slice(&slice) {
+        Ok(authoirzed_users) => authoirzed_users,
+        Err(e) => {
+            eprintln!("Serialization error {e}");
+            return;
+        }
+    };
+
+    
+}
+
+pub type UpdateListCallback =
+    extern "C" fn(context: *mut std::ffi::c_void, ptr: *const u8, count: usize);
 
 pub struct UpdateListCallbackContainer {
-    context: *mut std::ffi::c_void, 
-    update_list_callback: UpdateListCallback
+    context: *mut std::ffi::c_void,
+    update_list_callback: UpdateListCallback,
 }
 
 unsafe impl Send for UpdateListCallbackContainer {}
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_get_remote_videos (context: *mut std::ffi::c_void, update_list_callback: UpdateListCallback) {
+pub extern "C" fn rust_get_remote_videos(
+    context: *mut std::ffi::c_void,
+    update_list_callback: UpdateListCallback,
+) {
     let container = UpdateListCallbackContainer {
         context,
-        update_list_callback
+        update_list_callback,
     };
 
     runtime().spawn(async move {
-        if let Err(e) =  get_everything( container).await {
+        if let Err(e) = get_everything(container).await {
             eprintln!("failed to get access lists: {}", e);
         };
     });
@@ -97,5 +116,6 @@ async fn store_key() -> io::Result<SecretKey> {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub struct AuthorizedUsers {
-    pub authorized_users: Vec<String>,
+    pub namespace_id: String,
+    pub authorized_users: Vec<String> 
 }

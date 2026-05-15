@@ -1,14 +1,15 @@
 use std::{io::Error, str::FromStr, sync::OnceLock};
 
+use anyhow::Ok;
 use iroh::{PublicKey, endpoint::presets, protocol::Router};
 use iroh_blobs::{BlobsProtocol, store::fs::FsStore};
-use iroh_docs::{DocTicket, protocol::Docs, store::Query};
+use iroh_docs::{DocTicket, NamespaceId, protocol::Docs, store::Query};
 use iroh_gossip::Gossip;
+use n0_future::StreamExt;
 use tokio::{
     fs::File,
     io::{self},
 };
-use n0_future::StreamExt;
 
 use crate::interop::video_handling::{AuthorizedUsers, UpdateListCallbackContainer, get_key};
 
@@ -58,7 +59,6 @@ pub async fn run_router() -> anyhow::Result<()> {
     }
 
     println!("Saved the docs");
-
 
     if let Err(_) = BLOBS.set(blobs) {
         eprintln!("Blobs already created");
@@ -112,6 +112,7 @@ pub async fn upload_handler(file_path: String, endpoint_id: String) -> anyhow::R
     let doc = docs.import(ticket).await?;
 
     let entry = AuthorizedUsers {
+        namespace_id: doc.id().to_string(),
         authorized_users: vec![endpoint.id().to_string()],
     };
     let entry = serde_json::to_vec(&entry)?;
@@ -141,7 +142,6 @@ pub async fn get_everything(container: UpdateListCallbackContainer) -> anyhow::R
     let mut res = docs.list().await?;
 
     while let Some(entry) = res.next().await {
-
         println!("Have a document");
 
         let (namespace, _) = entry?;
@@ -170,6 +170,25 @@ pub async fn get_everything(container: UpdateListCallbackContainer) -> anyhow::R
     }
 
     println!("Exiting");
+
+    Ok(())
+}
+
+pub async fn update_access_control_list_for_doc (authorized_users: AuthorizedUsers) -> anyhow::Result<()> {
+    let docs = DOCS.get().ok_or(Error::new(
+        io::ErrorKind::NotFound,
+        "Docs wasn't initialized, have you started the router?",
+    ))?;
+
+    let namespace_id = NamespaceId::from_str(&authorized_users.namespace_id)?;
+    let doc = docs.open(namespace_id).await?.ok_or(Error::new(
+        io::ErrorKind::NotFound,
+        "Could not find document associated with namespace",
+    ))?;
+
+    let entry = serde_json::to_vec(&authorized_users)?;
+
+    doc.set_bytes(docs.author_default().await?, "accesslist", entry).await?;
 
     Ok(())
 }

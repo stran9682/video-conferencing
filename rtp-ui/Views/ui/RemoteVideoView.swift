@@ -13,8 +13,8 @@ struct RemoteVideoView: View {
     @State private var accessListsModel: AccessListsModel = AccessListsModel()
     
     var body: some View {
-        List(accessListsModel.accessLists, id: \.authorized_users) { list in
-            SharedWithListItemView(users: list.authorized_users)
+        List(accessListsModel.accessLists, id: \.namespace_id) { list in
+            SharedWithListItemView(users: list.authorized_users, namespace_id: list.namespace_id)
                 .padding(10)
                 .frame(height: 200)
         }
@@ -30,6 +30,7 @@ struct RemoteVideoView: View {
 }
 
 struct AuthorizedUsers: Codable {
+    let namespace_id: String
     let authorized_users: [String]
 }
 

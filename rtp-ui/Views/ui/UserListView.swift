@@ -9,26 +9,46 @@ import SwiftUI
 
 struct SharedWithListItemView: View {
     
-    // TODO: fix up this initalizer
-    init(users: [String]) {
+    init(users: [String], namespace_id: String) {
         mockData = users.map({ user in
             UserRowModel(user: user)
         })
+        
+        self.namespace_id = namespace_id
     }
 
+    private var namespace_id: String
     @State private var newViewer = ""
     @State private var mockData: [UserRowModel]
     
     var body: some View {
         VStack {
             HStack(alignment: .center) {
-                Text("Users")
+                
+                // TODO: replace with the name of the video
+                Text("\(namespace_id)")
                     .font(Font.title.bold())
 
                 Spacer()
 
                 Button(action: {
                     mockData.removeAll(where: { $0.toBeRemoved == true })
+                
+                    let authorizedUsers = AuthorizedUsers(
+                        namespace_id: namespace_id, authorized_users: mockData.map({ $0.user })
+                    )
+                    
+                    let encoder = JSONEncoder()
+                    do {
+                        let jsonData = try encoder.encode(authorizedUsers)
+                        
+                        let byteArray = [UInt8](jsonData)
+                        
+                        // TODO: update the document rust side.
+                        
+                    } catch {
+                        print("Serialization failed: \(error)")
+                    }
 
                 }, label: {
                     Label("Save", systemImage: "square.and.arrow.down")
@@ -63,9 +83,6 @@ struct SharedWithListItemView: View {
             }
             .padding(10)
         }
-        .task {
-            // TODO: load stuff from rust.
-        }
     }
 }
 
@@ -96,5 +113,5 @@ class UserRowModel: Identifiable {
 }
 
 #Preview {
-    SharedWithListItemView(users: [])
+    SharedWithListItemView(users: ["Joe", "Bob", "Alice"], namespace_id: "123")
 }
