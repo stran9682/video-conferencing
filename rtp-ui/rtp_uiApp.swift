@@ -12,6 +12,8 @@ import RTPmacos
 struct rtp_uiApp: App {
     @State var showingMainMenu: Bool = true
     @State var endpoint: String?
+    
+    @State var uploadManagerPtr: OpaquePointer? = nil
 
     var body: some Scene {
         WindowGroup {
@@ -19,18 +21,23 @@ struct rtp_uiApp: App {
                 NavigationSplitView(sidebar: {
                     List {
                         NavigationLink("Join", destination: JoinView(state: $showingMainMenu, endpoint: $endpoint))
-                        NavigationLink("Recordings", destination: FileBrowser())
-                        NavigationLink("Remote Videos", destination: RemoteVideoView())
-                        NavigationLink("View Video", destination: VideoSelectionView())
+                        if uploadManagerPtr != nil {
+                            NavigationLink("Recordings", destination: FileBrowser(uploadManagerPtr: uploadManagerPtr))
+                            NavigationLink("Remote Videos", destination: RemoteVideoView(uploadManagerPtr: uploadManagerPtr))
+                            NavigationLink("View Video", destination: VideoSelectionView())
+                        }
+                        
                     }
                 }, detail: {
                     ContentUnavailableView("Easy breezy", systemImage: "figure.dance")
                 })
                 .frame(minWidth: 500, minHeight: 300)
                 .toolbar(removing: .title)
-                .onAppear {
-                    rust_setup_docs()
-                    print("i have appeared")
+                .task {
+                    uploadManagerPtr = rust_setup_docs()
+                }
+                .onDisappear {
+                    rust_deallocate_uploadmanager(uploadManagerPtr)
                 }
             } else {
                 ContentView(endpoint: endpoint)

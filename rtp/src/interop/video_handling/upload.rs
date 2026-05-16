@@ -11,14 +11,130 @@ use tokio::{
     io::{self},
 };
 
-use crate::interop::video_handling::{AuthorizedUsers, UpdateListCallbackContainer, get_key};
+use crate::interop::video_handling::{AuthorizedUsers, GetListCallbackContainer, get_key};
 
 // I LOVE STATICS WE ALL SAY IN UNISON!
 static ROUTER: OnceLock<Router> = OnceLock::new();
-static DOCS: OnceLock<Docs> = OnceLock::new();
-static BLOBS: OnceLock<FsStore> = OnceLock::new();
 
-pub async fn run_router() -> anyhow::Result<()> {
+pub struct UploadManager {
+    docs: Docs,
+    blobs: FsStore,
+}
+
+impl UploadManager {
+    pub fn new (docs: &Docs, blobs: &FsStore) -> Self{
+        Self { 
+            docs: docs.clone(),
+            blobs: blobs.clone() 
+        }
+    }
+
+    pub async fn upload_handler(&self, file_path: String, endpoint_id: String) -> anyhow::Result<()> {
+        let secret_key = get_key().await?;
+
+        let endpoint = iroh::Endpoint::builder(presets::N0)
+            .secret_key(secret_key)
+            .bind()
+            .await?;
+
+        let remote: PublicKey = PublicKey::from_str(endpoint_id.trim())?;
+
+        let connection = endpoint.connect(remote, b"fun").await?;
+
+        let (mut send, mut recv) = connection.open_bi().await?;
+
+        let mut video = File::open(&file_path).await?;
+
+        tokio::io::copy(&mut video, &mut send).await?;
+
+        send.finish()?;
+
+        // receiving the doc ticket
+        let bytes = recv.read_to_end(256).await?;
+        let ticket_str = str::from_utf8(&bytes)?;
+        println!("Received a ticket: {}", ticket_str);
+        let ticket = DocTicket::from_str(ticket_str.trim())?;
+
+        // receiving the tag of the video
+        let mut recv = connection.accept_uni().await?;
+        let bytes = recv.read_to_end(256).await?;
+        let tag = String::from_utf8(bytes)?;
+        println!("Doc ID : # Clips: {}", tag);
+
+        // Now save the document
+        let author = self.docs.author_create().await?; // TODO adjust this
+        let doc = self.docs.import(ticket).await?;
+
+        let entry = AuthorizedUsers {
+            namespace_id: doc.id().to_string(),
+            authorized_users: vec![endpoint.id().to_string()],
+        };
+        let entry = serde_json::to_vec(&entry)?;
+
+        doc.set_bytes(author, "accesslist", entry)
+            .await?;
+
+        println!("Successfully set bytes");
+
+        connection.close(0u32.into(), b"all done!");
+
+        println!("Closed the connection");
+
+        Ok(())
+    }
+
+    pub async fn get_documents(&self, container: GetListCallbackContainer) -> anyhow::Result<()> {
+        let mut res = self.docs.list().await?;
+
+        while let Some(entry) = res.next().await {
+            println!("Have a document");
+
+            let (namespace, _) = entry?;
+
+            let doc = self.docs.open(namespace).await?.ok_or(Error::new(
+                io::ErrorKind::InvalidFilename,
+                "Couldn't open document",
+            ))?;
+
+            println!("Opening document");
+
+            if let Some(doc_entry) = doc
+                .get_one(Query::single_latest_per_key().key_exact("accesslist"))
+                .await?
+            {
+                println!("Getting access list entry");
+
+                let hash = doc_entry.content_hash();
+
+                let bytes = self.blobs.get_bytes(hash).await?;
+
+                println!("Sending to swift");
+
+                (container.update_list_callback)(container.context, bytes.as_ptr(), bytes.len())
+            }
+        }
+
+        println!("Exiting");
+
+        Ok(())
+    }
+
+    pub async fn update_access_control_list_for_doc (self, authorized_users: AuthorizedUsers) -> anyhow::Result<()> {
+        let namespace_id = NamespaceId::from_str(&authorized_users.namespace_id)?;
+        let doc = self.docs.open(namespace_id).await?.ok_or(Error::new(
+            io::ErrorKind::NotFound,
+            "Could not find document associated with namespace",
+        ))?;
+
+        let entry = serde_json::to_vec(&authorized_users)?;
+
+        doc.set_bytes(self.docs.author_default().await?, "accesslist", entry).await?;
+
+        Ok(())
+    }
+}
+
+pub async fn run_router() -> anyhow::Result<*mut UploadManager> {
     let secret_key = get_key().await?;
 
     println!("Got the key");
@@ -51,144 +167,7 @@ pub async fn run_router() -> anyhow::Result<()> {
         e.shutdown().await?;
     }
 
-    println!("Saved the router");
+    let upload_manager = UploadManager::new(&docs, &blobs);
 
-    if let Err(_) = DOCS.set(docs) {
-        eprintln!("Docs already created");
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Docs already created").into());
-    }
-
-    println!("Saved the docs");
-
-    if let Err(_) = BLOBS.set(blobs) {
-        eprintln!("Blobs already created");
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Blob already created").into());
-    }
-
-    println!("Saved the blobs");
-
-    Ok(())
-}
-
-pub async fn upload_handler(file_path: String, endpoint_id: String) -> anyhow::Result<()> {
-    let docs = DOCS.get().ok_or(Error::new(
-        io::ErrorKind::NotFound,
-        "Docs wasn't initialized, have you started the router?",
-    ))?;
-
-    let secret_key = get_key().await?;
-
-    let endpoint = iroh::Endpoint::builder(presets::N0)
-        .secret_key(secret_key)
-        .bind()
-        .await?;
-
-    let remote: PublicKey = PublicKey::from_str(endpoint_id.trim())?;
-
-    let connection = endpoint.connect(remote, b"fun").await?;
-
-    let (mut send, mut recv) = connection.open_bi().await?;
-
-    let mut video = File::open(&file_path).await?;
-
-    tokio::io::copy(&mut video, &mut send).await?;
-
-    send.finish()?;
-
-    // receiving the doc ticket
-    let bytes = recv.read_to_end(256).await?;
-    let ticket_str = str::from_utf8(&bytes)?;
-    println!("Received a ticket: {}", ticket_str);
-    let ticket = DocTicket::from_str(ticket_str.trim())?;
-
-    // receiving the tag of the video
-    let mut recv = connection.accept_uni().await?;
-    let bytes = recv.read_to_end(256).await?;
-    let tag = String::from_utf8(bytes)?;
-    println!("Doc ID : # Clips: {}", tag);
-
-    // Now save the document
-    let author = docs.author_create().await?; // TODO adjust this
-    let doc = docs.import(ticket).await?;
-
-    let entry = AuthorizedUsers {
-        namespace_id: doc.id().to_string(),
-        authorized_users: vec![endpoint.id().to_string()],
-    };
-    let entry = serde_json::to_vec(&entry)?;
-
-    doc.set_bytes(author, "accesslist", entry)
-        .await?;
-
-    connection.close(0u32.into(), b"all done!");
-
-    Ok(())
-}
-
-// Tough times call for tough solutions
-pub async fn get_everything(container: UpdateListCallbackContainer) -> anyhow::Result<()> {
-    let docs = DOCS.get().ok_or(Error::new(
-        io::ErrorKind::NotFound,
-        "Docs wasn't initialized, have you started the router?",
-    ))?;
-
-    let blobs = BLOBS.get().ok_or(Error::new(
-        io::ErrorKind::NotFound,
-        "Blobs wasn't initialized, have you started the router?",
-    ))?;
-
-    println!("Everything good to start");
-
-    let mut res = docs.list().await?;
-
-    while let Some(entry) = res.next().await {
-        println!("Have a document");
-
-        let (namespace, _) = entry?;
-
-        let doc = docs.open(namespace).await?.ok_or(Error::new(
-            io::ErrorKind::InvalidFilename,
-            "Couldn't open document",
-        ))?;
-
-        println!("Opening document");
-
-        if let Some(doc_entry) = doc
-            .get_one(Query::single_latest_per_key().key_exact("accesslist"))
-            .await?
-        {
-            println!("Getting access list entry");
-
-            let hash = doc_entry.content_hash();
-
-            let bytes = blobs.get_bytes(hash).await?;
-
-            println!("Sending to swift");
-
-            (container.update_list_callback)(container.context, bytes.as_ptr(), bytes.len())
-        }
-    }
-
-    println!("Exiting");
-
-    Ok(())
-}
-
-pub async fn update_access_control_list_for_doc (authorized_users: AuthorizedUsers) -> anyhow::Result<()> {
-    let docs = DOCS.get().ok_or(Error::new(
-        io::ErrorKind::NotFound,
-        "Docs wasn't initialized, have you started the router?",
-    ))?;
-
-    let namespace_id = NamespaceId::from_str(&authorized_users.namespace_id)?;
-    let doc = docs.open(namespace_id).await?.ok_or(Error::new(
-        io::ErrorKind::NotFound,
-        "Could not find document associated with namespace",
-    ))?;
-
-    let entry = serde_json::to_vec(&authorized_users)?;
-
-    doc.set_bytes(docs.author_default().await?, "accesslist", entry).await?;
-
-    Ok(())
+    Ok(Box::into_raw(Box::new(upload_manager)))
 }

@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+typedef struct UploadManager UploadManager;
+
 typedef void (*ReleaseCallback)(void*);
 
 typedef void (*UpdateListCallback)(void *context, const uint8_t *ptr, uintptr_t count);
@@ -34,14 +36,21 @@ bool rust_send_frame(const uint8_t *data,
 
 extern void swift_receive_frame(void *context, void *frameData, uintptr_t frameDataLength);
 
-void rust_setup_docs(void);
+struct UploadManager *rust_setup_docs(void);
 
-void rust_upload(const uint8_t *file_path,
+void rust_deallocate_uploadmanager(struct UploadManager *upload_manager_ptr);
+
+bool rust_upload(struct UploadManager *upload_manager_ptr,
+                 const uint8_t *file_path,
                  uintptr_t file_path_len,
                  const uint8_t *endpoint_id,
                  uintptr_t endpoint_id_length);
 
-void rust_get_remote_videos(void *context, UpdateListCallback update_list_callback);
+void rust_change_permissions(const uint8_t *list_ptr, uintptr_t ptr_length);
+
+void rust_get_shared_videos(struct UploadManager *upload_manager_ptr,
+                            void *context,
+                            UpdateListCallback update_list_callback);
 
 extern void swift_receive_video(void *context, const uint8_t *path);
 

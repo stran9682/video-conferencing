@@ -10,7 +10,12 @@ import RTPmacos
 
 struct RemoteVideoView: View {
     
-    @State private var accessListsModel: AccessListsModel = AccessListsModel()
+    @State private var accessListsModel: AccessListsModel
+    
+    init(uploadManagerPtr: OpaquePointer?) {
+        accessListsModel = AccessListsModel(uploadManagerPtr: uploadManagerPtr)
+    }
+    
     
     var body: some View {
         List(accessListsModel.accessLists, id: \.namespace_id) { list in
@@ -38,11 +43,16 @@ struct AuthorizedUsers: Codable {
 class AccessListsModel {
     var accessLists: [AuthorizedUsers] = []
     var ptr: UnsafeMutableRawPointer?
+    var uploadManagerPtr: OpaquePointer?
+    
+    init (uploadManagerPtr: OpaquePointer?){
+        self.uploadManagerPtr = uploadManagerPtr
+    }
 
     func retrieveList() {
-        guard ptr == nil else { return }
+        guard ptr == nil, uploadManagerPtr != nil else { return }
         ptr = Unmanaged.passRetained(self).toOpaque()
-        rust_get_remote_videos(ptr, addAccessList)
+        rust_get_shared_videos(uploadManagerPtr, ptr , addAccessList)
     }
     
     func stopListening() {
@@ -75,10 +85,4 @@ func addAccessList(context: UnsafeMutableRawPointer?, ptr: UnsafePointer<UInt8>?
     catch {
         print("Decoding failed: \(error)")
     }
-}
-
-
-
-#Preview {
-    RemoteVideoView()
 }
