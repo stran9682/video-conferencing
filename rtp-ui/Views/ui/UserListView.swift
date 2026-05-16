@@ -6,18 +6,22 @@
 //
 
 import SwiftUI
+import RTPmacos
 
 struct SharedWithListItemView: View {
     
-    init(users: [String], namespace_id: String) {
+    init(users: [String], namespace_id: String, uploadManagerPtr: OpaquePointer?) {
         mockData = users.map({ user in
             UserRowModel(user: user)
         })
         
         self.namespace_id = namespace_id
+        self.uploadManagerPtr = uploadManagerPtr
     }
 
     private var namespace_id: String
+    private var uploadManagerPtr: OpaquePointer? = nil
+    
     @State private var newViewer = ""
     @State private var mockData: [UserRowModel]
     
@@ -40,11 +44,13 @@ struct SharedWithListItemView: View {
                     
                     let encoder = JSONEncoder()
                     do {
+                        guard uploadManagerPtr != nil else { return }
+                        
                         let jsonData = try encoder.encode(authorizedUsers)
                         
                         let byteArray = [UInt8](jsonData)
                         
-                        // TODO: update the document rust side.
+                        rust_change_permissions(uploadManagerPtr, byteArray, UInt(byteArray.count))
                         
                     } catch {
                         print("Serialization failed: \(error)")
@@ -110,8 +116,4 @@ class UserRowModel: Identifiable {
     init(user: String) {
         self.user = user
     }
-}
-
-#Preview {
-    SharedWithListItemView(users: ["Joe", "Bob", "Alice"], namespace_id: "123")
 }

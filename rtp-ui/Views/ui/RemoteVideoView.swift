@@ -11,15 +11,17 @@ import RTPmacos
 struct RemoteVideoView: View {
     
     @State private var accessListsModel: AccessListsModel
+    var uploadManagerPtr: OpaquePointer?
     
     init(uploadManagerPtr: OpaquePointer?) {
         accessListsModel = AccessListsModel(uploadManagerPtr: uploadManagerPtr)
+        self.uploadManagerPtr = uploadManagerPtr
     }
     
     
     var body: some View {
         List(accessListsModel.accessLists, id: \.namespace_id) { list in
-            SharedWithListItemView(users: list.authorized_users, namespace_id: list.namespace_id)
+            SharedWithListItemView(users: list.authorized_users, namespace_id: list.namespace_id, uploadManagerPtr: uploadManagerPtr)
                 .padding(10)
                 .frame(height: 200)
         }

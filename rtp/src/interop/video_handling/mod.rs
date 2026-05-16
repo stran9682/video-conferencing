@@ -56,6 +56,8 @@ pub extern "C" fn rust_upload(
     endpoint_id: *const u8,
     endpoint_id_length: usize,
 ) -> bool {
+    if upload_manager_ptr.is_null() { return false; }
+
     let upload_manager = unsafe { &*upload_manager_ptr };
 
     let file_path = unsafe { slice::from_raw_parts(file_path, file_path_len) };
@@ -79,7 +81,15 @@ pub extern "C" fn rust_upload(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rust_change_permissions(list_ptr: *const u8, ptr_length: usize) {
+pub extern "C" fn rust_change_permissions(
+    upload_manager_ptr: *mut UploadManager, 
+    list_ptr: *const u8, 
+    ptr_length: usize
+) -> bool {
+    if upload_manager_ptr.is_null() { return false; }
+
+    let upload_manager = unsafe { &*upload_manager_ptr };
+
     let slice = unsafe { slice::from_raw_parts(list_ptr, ptr_length) };
     let slice = slice.to_owned(); // we're gonna copy to avoid messy memory management with swift.
 
@@ -87,11 +97,19 @@ pub extern "C" fn rust_change_permissions(list_ptr: *const u8, ptr_length: usize
         Ok(authoirzed_users) => authoirzed_users,
         Err(e) => {
             eprintln!("Serialization error {e}");
-            return;
+            return false;
         }
     };
 
-    todo!()
+    match runtime().block_on(async {
+        upload_manager.update_access_control_list_for_doc(authorized_users).await
+    }) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("Failed to update document {e}");
+            false
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -100,6 +118,8 @@ pub extern "C" fn rust_get_shared_videos(
     context: *mut std::ffi::c_void,
     update_list_callback: UpdateListCallback,
 ) {
+    if upload_manager_ptr.is_null() { return; }
+
     let upload_manager = unsafe { &*upload_manager_ptr };
 
     let container = GetListCallbackContainer {

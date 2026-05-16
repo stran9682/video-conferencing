@@ -119,7 +119,7 @@ impl UploadManager {
         Ok(())
     }
 
-    pub async fn update_access_control_list_for_doc (self, authorized_users: AuthorizedUsers) -> anyhow::Result<()> {
+    pub async fn update_access_control_list_for_doc (&self, authorized_users: AuthorizedUsers) -> anyhow::Result<()> {
         let namespace_id = NamespaceId::from_str(&authorized_users.namespace_id)?;
         let doc = self.docs.open(namespace_id).await?.ok_or(Error::new(
             io::ErrorKind::NotFound,

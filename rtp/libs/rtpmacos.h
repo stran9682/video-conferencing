@@ -46,7 +46,9 @@ bool rust_upload(struct UploadManager *upload_manager_ptr,
                  const uint8_t *endpoint_id,
                  uintptr_t endpoint_id_length);
 
-void rust_change_permissions(const uint8_t *list_ptr, uintptr_t ptr_length);
+bool rust_change_permissions(struct UploadManager *upload_manager_ptr,
+                             const uint8_t *list_ptr,
+                             uintptr_t ptr_length);
 
 void rust_get_shared_videos(struct UploadManager *upload_manager_ptr,
                             void *context,
