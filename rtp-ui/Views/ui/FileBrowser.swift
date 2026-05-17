@@ -11,13 +11,13 @@ import SwiftUI
 
 struct FileBrowser: View {
     private var files = getFiles() ?? []
-    
+
     var uploadManagerPtr: OpaquePointer?
-    
-    init (uploadManagerPtr: OpaquePointer?){
+
+    init(uploadManagerPtr: OpaquePointer?) {
         self.uploadManagerPtr = uploadManagerPtr
     }
-    
+
     @State private var selectedURL: URL?
 
     var body: some View {
@@ -50,7 +50,7 @@ struct FileRow: View {
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.borderless)
-                    
+
                     Text(url.lastPathComponent)
                         .foregroundStyle(Color(.white))
 
@@ -108,7 +108,7 @@ struct uploadView: View {
                             print("Pointer was nil")
                             return
                         }
-                        
+
                         rust_upload(
                             uploadManagerPtr,
                             url.relativePath,

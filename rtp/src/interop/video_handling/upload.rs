@@ -3,7 +3,7 @@ use std::{io::Error, str::FromStr, sync::OnceLock};
 use anyhow::Ok;
 use iroh::{PublicKey, endpoint::presets, protocol::Router};
 use iroh_blobs::{BlobsProtocol, store::fs::FsStore};
-use iroh_docs::{DocTicket, NamespaceId, protocol::Docs, store::Query};
+use iroh_docs::{DocTicket, NamespaceId, api::protocol::ShareMode, protocol::Docs, store::Query};
 use iroh_gossip::Gossip;
 use n0_future::StreamExt;
 use tokio::{
@@ -131,6 +131,17 @@ impl UploadManager {
         doc.set_bytes(self.docs.author_default().await?, "accesslist", entry).await?;
 
         Ok(())
+    }
+
+    pub async fn get_doc_ticket(&self, namespace_id: NamespaceId) -> anyhow::Result<String> {
+        let doc = self.docs.open(namespace_id).await?.ok_or(Error::new(
+            io::ErrorKind::NotFound,
+            "Could not find document associated with namespace",
+        ))?;
+
+        let ticket = doc.share(ShareMode::Write, Default::default()).await?;
+
+        Ok(ticket.to_string())
     }
 }
 

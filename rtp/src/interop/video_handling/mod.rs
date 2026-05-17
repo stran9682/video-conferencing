@@ -1,6 +1,7 @@
-use std::{io, ptr, slice};
+use std::{ffi::CString, io, ptr, slice, str::FromStr};
 
 use iroh::SecretKey;
+use iroh_docs::NamespaceId;
 use serde::{Deserialize, Serialize};
 
 use crate::interop::{
@@ -132,6 +133,45 @@ pub extern "C" fn rust_get_shared_videos(
             eprintln!("failed to get access lists: {}", e);
         };
     });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_get_doc_ticket(
+    upload_manager_ptr: *mut UploadManager,
+    namespace_id_ptr: *const u8,
+    ptr_length: usize,
+    buffer: *mut i8
+) -> bool {
+    if upload_manager_ptr.is_null() || namespace_id_ptr.is_null() { return true }
+
+    let upload_manager = unsafe { &*upload_manager_ptr };
+
+    let namespace_id = unsafe { slice::from_raw_parts(namespace_id_ptr, ptr_length) };
+    let Ok(namespace_id) = str::from_utf8(namespace_id) else {
+        return false
+    };
+
+    let Ok(namespace_id) = NamespaceId::from_str(namespace_id) else {
+        return false
+    };
+
+    match runtime().block_on(upload_manager.get_doc_ticket(namespace_id)) {
+        Ok(ticket) => {
+            println!("Rust side: {}", ticket);
+
+            let c_string = CString::new(ticket).unwrap();
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    c_string.as_ptr() as *const i8,
+                    buffer,
+                    c_string.count_bytes(),
+                );
+            }
+
+            true
+        }
+        Err(_) =>  false
+    }
 }
 
 async fn get_key() -> io::Result<SecretKey> {

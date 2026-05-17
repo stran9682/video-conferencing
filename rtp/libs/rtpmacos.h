@@ -54,6 +54,11 @@ void rust_get_shared_videos(struct UploadManager *upload_manager_ptr,
                             void *context,
                             UpdateListCallback update_list_callback);
 
+bool rust_get_doc_ticket(struct UploadManager *upload_manager_ptr,
+                         const uint8_t *namespace_id_ptr,
+                         uintptr_t ptr_length,
+                         int8_t *buffer);
+
 extern void swift_receive_video(void *context, const uint8_t *path);
 
 extern void swift_release_pointer(void *context);

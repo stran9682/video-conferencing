@@ -5,14 +5,14 @@
 //  Created by Sebastian Tran on 1/7/26.
 //
 
-import SwiftUI
 import RTPmacos
+import SwiftUI
 
 @main
 struct rtp_uiApp: App {
     @State var showingMainMenu: Bool = true
     @State var endpoint: String?
-    
+
     @State var uploadManagerPtr: OpaquePointer? = nil
 
     var body: some Scene {
@@ -26,7 +26,6 @@ struct rtp_uiApp: App {
                             NavigationLink("Remote Videos", destination: RemoteVideoView(uploadManagerPtr: uploadManagerPtr))
                             NavigationLink("View Video", destination: VideoSelectionView())
                         }
-                        
                     }
                 }, detail: {
                     ContentUnavailableView("Easy breezy", systemImage: "figure.dance")
