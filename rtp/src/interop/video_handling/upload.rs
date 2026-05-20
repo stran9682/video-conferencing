@@ -163,6 +163,24 @@ pub async fn run_router() -> anyhow::Result<*mut UploadManager> {
         .spawn(endpoint.clone(), (*blobs).clone(), gossip.clone())
         .await?;
 
+    let mut res = docs.list().await?;
+    while let Some(entry) = res.next().await {
+        let (namespace_id, _) = entry?;
+
+        let doc = docs.open(namespace_id).await?.ok_or(Error::new(
+            io::ErrorKind::InvalidFilename,
+            "Couldn't open document",
+        ))?;
+
+        let ticket = doc.share(ShareMode::Write, Default::default()).await?;
+        let ticket_str = ticket.to_string();
+
+        // no way you can do this.
+        // bahah using your document to rejoin
+        println!("Doc ticket on startup: {}", ticket.to_string());
+        docs.import(DocTicket::from_str(&ticket_str)?).await?;
+    }
+
     println!("Started the dependencies");
 
     let router = Router::builder(endpoint)
