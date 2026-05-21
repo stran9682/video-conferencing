@@ -22,14 +22,18 @@ pub struct UploadManager {
 }
 
 impl UploadManager {
-    pub fn new (docs: &Docs, blobs: &FsStore) -> Self{
-        Self { 
+    pub fn new(docs: &Docs, blobs: &FsStore) -> Self {
+        Self {
             docs: docs.clone(),
-            blobs: blobs.clone() 
+            blobs: blobs.clone(),
         }
     }
 
-    pub async fn upload_handler(&self, file_path: String, endpoint_id: String) -> anyhow::Result<()> {
+    pub async fn upload_handler(
+        &self,
+        file_path: String,
+        endpoint_id: String,
+    ) -> anyhow::Result<()> {
         let secret_key = get_key().await?;
 
         let endpoint = iroh::Endpoint::builder(presets::N0)
@@ -71,14 +75,9 @@ impl UploadManager {
         };
         let entry = serde_json::to_vec(&entry)?;
 
-        doc.set_bytes(author, "accesslist", entry)
-            .await?;
-
-        println!("Successfully set bytes");
+        doc.set_bytes(author, "accesslist", entry).await?;
 
         connection.close(0u32.into(), b"all done!");
-
-        println!("Closed the connection");
 
         Ok(())
     }
@@ -119,7 +118,10 @@ impl UploadManager {
         Ok(())
     }
 
-    pub async fn update_access_control_list_for_doc (&self, authorized_users: AuthorizedUsers) -> anyhow::Result<()> {
+    pub async fn update_access_control_list_for_doc(
+        &self,
+        authorized_users: AuthorizedUsers,
+    ) -> anyhow::Result<()> {
         let namespace_id = NamespaceId::from_str(&authorized_users.namespace_id)?;
         let doc = self.docs.open(namespace_id).await?.ok_or(Error::new(
             io::ErrorKind::NotFound,
@@ -128,7 +130,8 @@ impl UploadManager {
 
         let entry = serde_json::to_vec(&authorized_users)?;
 
-        doc.set_bytes(self.docs.author_default().await?, "accesslist", entry).await?;
+        doc.set_bytes(self.docs.author_default().await?, "accesslist", entry)
+            .await?;
 
         Ok(())
     }

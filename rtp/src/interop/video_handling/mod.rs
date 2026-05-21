@@ -21,7 +21,7 @@ pub type UpdateListCallback =
 #[serde(tag = "type")]
 pub struct AuthorizedUsers {
     pub namespace_id: String,
-    pub authorized_users: Vec<String> 
+    pub authorized_users: Vec<String>,
 }
 
 pub struct GetListCallbackContainer {
@@ -35,9 +35,7 @@ unsafe impl Send for GetListCallbackContainer {}
 pub extern "C" fn rust_setup_docs() -> *mut UploadManager {
     println!("Starting setup: ");
 
-    let ptr = runtime().block_on(async {
-        run_router().await
-    });
+    let ptr = runtime().block_on(async { run_router().await });
 
     ptr.unwrap_or(ptr::null_mut())
 }
@@ -57,7 +55,9 @@ pub extern "C" fn rust_upload(
     endpoint_id: *const u8,
     endpoint_id_length: usize,
 ) -> bool {
-    if upload_manager_ptr.is_null() { return false; }
+    if upload_manager_ptr.is_null() {
+        return false;
+    }
 
     let upload_manager = unsafe { &*upload_manager_ptr };
 
@@ -83,11 +83,13 @@ pub extern "C" fn rust_upload(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_change_permissions(
-    upload_manager_ptr: *mut UploadManager, 
-    list_ptr: *const u8, 
-    ptr_length: usize
+    upload_manager_ptr: *mut UploadManager,
+    list_ptr: *const u8,
+    ptr_length: usize,
 ) -> bool {
-    if upload_manager_ptr.is_null() { return false; }
+    if upload_manager_ptr.is_null() {
+        return false;
+    }
 
     let upload_manager = unsafe { &*upload_manager_ptr };
 
@@ -103,7 +105,9 @@ pub extern "C" fn rust_change_permissions(
     };
 
     match runtime().block_on(async {
-        upload_manager.update_access_control_list_for_doc(authorized_users).await
+        upload_manager
+            .update_access_control_list_for_doc(authorized_users)
+            .await
     }) {
         Ok(()) => true,
         Err(e) => {
@@ -119,7 +123,9 @@ pub extern "C" fn rust_get_shared_videos(
     context: *mut std::ffi::c_void,
     update_list_callback: UpdateListCallback,
 ) {
-    if upload_manager_ptr.is_null() { return; }
+    if upload_manager_ptr.is_null() {
+        return;
+    }
 
     let upload_manager = unsafe { &*upload_manager_ptr };
 
@@ -140,19 +146,21 @@ pub extern "C" fn rust_get_doc_ticket(
     upload_manager_ptr: *mut UploadManager,
     namespace_id_ptr: *const u8,
     ptr_length: usize,
-    buffer: *mut i8
+    buffer: *mut i8,
 ) -> bool {
-    if upload_manager_ptr.is_null() || namespace_id_ptr.is_null() { return true }
+    if upload_manager_ptr.is_null() || namespace_id_ptr.is_null() {
+        return true;
+    }
 
     let upload_manager = unsafe { &*upload_manager_ptr };
 
     let namespace_id = unsafe { slice::from_raw_parts(namespace_id_ptr, ptr_length) };
     let Ok(namespace_id) = str::from_utf8(namespace_id) else {
-        return false
+        return false;
     };
 
     let Ok(namespace_id) = NamespaceId::from_str(namespace_id) else {
-        return false
+        return false;
     };
 
     match runtime().block_on(upload_manager.get_doc_ticket(namespace_id)) {
@@ -170,7 +178,7 @@ pub extern "C" fn rust_get_doc_ticket(
 
             true
         }
-        Err(_) =>  false
+        Err(_) => false,
     }
 }
 
