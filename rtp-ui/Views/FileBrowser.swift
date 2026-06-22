@@ -12,18 +12,12 @@ import SwiftUI
 struct FileBrowser: View {
     private var files = getFiles() ?? []
 
-    var uploadManagerPtr: OpaquePointer?
-
-    init(uploadManagerPtr: OpaquePointer?) {
-        self.uploadManagerPtr = uploadManagerPtr
-    }
-
     @State private var selectedURL: URL?
 
     var body: some View {
         if !files.isEmpty {
             List(files, id: \.self) { file in
-                FileRow(url: file, selectedURL: $selectedURL, uploadManagerPtr: uploadManagerPtr)
+                FileRow(url: file, selectedURL: $selectedURL)
             }
             .quickLookPreview($selectedURL)
         } else {
@@ -37,7 +31,6 @@ struct FileRow: View {
     @Binding var selectedURL: URL?
     @State var exportMenuOpen: Bool = false
     @State var shareMenuOpen: Bool = false
-    var uploadManagerPtr: OpaquePointer?
 
     var body: some View {
         VStack {
@@ -69,10 +62,6 @@ struct FileRow: View {
             Divider()
         }
         .listRowSeparator(.hidden)
-        .sheet(isPresented: $exportMenuOpen, content: {
-            uploadView(url: url, uploadManagerPtr: uploadManagerPtr)
-
-        })
     }
 }
 
@@ -82,7 +71,6 @@ struct uploadView: View {
 
     @State private var endpointAddress: String = ""
     let url: URL
-    var uploadManagerPtr: OpaquePointer?
 
     var body: some View {
         NavigationStack {
@@ -100,25 +88,6 @@ struct uploadView: View {
                             .foregroundStyle(.gray)
                             .symbolVariant(.circle.fill)
                     }
-                })
-
-                ToolbarItem(placement: .confirmationAction, content: {
-                    Button("Upload") {
-                        guard uploadManagerPtr != nil else {
-                            print("Pointer was nil")
-                            return
-                        }
-
-                        rust_upload(
-                            uploadManagerPtr,
-                            url.relativePath,
-                            UInt(url.relativePath.count),
-                            endpointAddress,
-                            UInt(endpointAddress.count)
-                        )
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
                 })
             })
         }

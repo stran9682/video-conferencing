@@ -1,7 +1,6 @@
 pub mod audio;
 pub mod network_runtime;
 pub mod video;
-pub mod video_handling;
 
 use bytes::Bytes;
 use iroh::{PublicKey, endpoint::Connection};
