@@ -6,10 +6,10 @@ Made with Iroh and SwiftUI for MacOS. Start or join a private P2P video conferen
 
 ### Run
 
-``bash
+```bash
 cd rtp
 make macos
-``
+```
 
 then startup xcode and run
 
