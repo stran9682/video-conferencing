@@ -44,7 +44,7 @@ pub struct Peer {
     jitter: u32,
 
     /// highest sequence number currently received from this peer         
-    max_sequence_number: Option<u16>,
+    max_sequence_number: u16,
 
     /// first sequence number received         
     initial_sequence_number: Option<u16>,
@@ -91,7 +91,7 @@ impl Peer {
             last_sr_timestamp: 0,
             packets_received: 0,
             wrap_around_count: 0,
-            max_sequence_number: None,
+            max_sequence_number: 0,
             initial_sequence_number: None,
             window: VecDeque::new(),
             min_window: u32::MAX,
@@ -138,25 +138,23 @@ impl Peer {
     }
 
     pub fn add_node(&mut self, mut playout_buffer_node: PlayoutBufferNode, mut fragment: Fragment) {
-        // accounting for wraparound
-        if let Some(max_sequence_number) = self.max_sequence_number {
-            let delta = fragment.sequence_num - max_sequence_number;
-
-            if delta < MAX_DROPOUT {
-                if fragment.sequence_num < max_sequence_number {
-                    self.wrap_around_count += 1;
-                }
-                self.max_sequence_number = Some(fragment.sequence_num);
-            } else if delta <= 65535 - 100 {
-                // sequence number made a large jump
-            } else {
-                // misordered packet.
-            }
-        } else {
-            // this is just to initalize it, usually the first frame
-            // bad network conditions shouldn't need to be handled here
-            self.max_sequence_number = Some(fragment.sequence_num);
+        if self.initial_sequence_number.is_none() {
             self.initial_sequence_number = Some(fragment.sequence_num);
+            self.max_sequence_number = fragment.sequence_num;
+        }
+
+        let delta = fragment.sequence_num - self.max_sequence_number;
+
+        if delta < MAX_DROPOUT {
+            // accounting for wraparound
+            if fragment.sequence_num < self.max_sequence_number {
+                self.wrap_around_count += 1;
+            }
+            self.max_sequence_number = fragment.sequence_num;
+        } else if delta <= 65535 - 100 {
+            // sequence number made a large jump
+        } else {
+            // misordered packet.
         }
 
         // use extended timestamp for ordering
@@ -195,7 +193,7 @@ impl Peer {
     }
 
     fn max_extended_sequence_num(&self) -> u32 {
-        let max_sequence = self.max_sequence_number.unwrap_or(0);
+        let max_sequence = self.max_sequence_number;
         max_sequence as u32 + (65536 * self.wrap_around_count)
     }
 

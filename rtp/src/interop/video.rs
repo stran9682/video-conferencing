@@ -1,4 +1,4 @@
-use std::mem;
+use std::mem::{self, zeroed};
 use std::time::Instant;
 use std::{io, sync::Arc};
 
@@ -99,9 +99,10 @@ pub async fn rtp_frame_receiver(
     peer_manager: Arc<PeerManager>,
     media_clock_rate: u32,
 ) -> io::Result<()> {
-    // let _ = FRAME_OUTPUT.set(Arc::clone(&peer_manager));
     println!("Starting a video receiver");
     let instant = Instant::now();
+
+    let mut max_timestamp: Option<u32> = None;
 
     loop {
         let (header, data) = match frame_rx.recv().await {
@@ -115,6 +116,28 @@ pub async fn rtp_frame_receiver(
                 ));
             }
         };
+
+        // This is VERY aggressive frame discarding
+        // If we get a newer timestamp, discard the last one.
+        // when we implement playout times, 
+        // ideally we should just be going through the queue,
+        // but for now this will do.
+        if let Some(timestamp) = max_timestamp && timestamp != header.timestamp {
+            let delta = header.timestamp - timestamp;
+
+            if delta <= u32::MAX - 3000 {
+                peer_manager.pop_node(header.ssrc, timestamp, StreamType::Video);
+                max_timestamp = Some(header.timestamp);
+            }
+            else {
+                // misordered packet
+                peer_manager.pop_node(header.ssrc, header.timestamp, StreamType::Video);
+                continue;
+            }
+        }
+        else {
+            max_timestamp = Some(header.timestamp);
+        }
 
         let duration_since = instant.elapsed();
 
@@ -161,7 +184,5 @@ pub async fn rtp_frame_receiver(
 
             mem::forget(frame_data);
         }
-
-        //println!("{}: {}", addr.to_string(), bytes_read);
     }
 }
