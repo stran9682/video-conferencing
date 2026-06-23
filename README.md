@@ -1,6 +1,6 @@
-# video confrencing app 
+# Video conferencing app 
 
-Made with Iroh and SwiftUI for MacOS. Start or join a private P2P video conference. Definitely still in progress!
+Made with Iroh and SwiftUI for macOS. Start or join a private P2P video conference. Definitely still in progress!
 
 ## Setup
 
@@ -11,5 +11,5 @@ cd rtp
 make macos
 ```
 
-then startup xcode and run
+Then start Xcode and run
 
